@@ -9,10 +9,12 @@ import '../utils/date_utils.dart';
 import '../widgets/pulse_fire_icon.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/celebration_overlay.dart';
+import '../widgets/day_percent_ring.dart';
 import '../services/notification_service.dart';
 import '../services/streak_service.dart';
 import 'habit_detail_screen.dart';
 import 'habit_history_screen.dart';
+import 'calendar_stats_screen.dart';
 
 const Color kTaskColor = Color(0xFF60A5FA);
 
@@ -79,6 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showCelebration = false;
   Key _celebrationKey = UniqueKey();
 
+  double _todayHabitPercent = 0;
+  bool _todayHasHabits = false;
+
   bool get _isToday => isSameDate(_selectedDate, DateTime.now());
 
   @override
@@ -119,6 +124,11 @@ class _HomeScreenState extends State<HomeScreen> {
         records[h.id!] = await _dbHelper.getRecordForDate(h.id!, _selectedDate);
       }
     }
+
+    final todayStatus = await _dbHelper.getHabitsStatusForDate(DateTime.now());
+    final todayHabitsOnly = todayStatus.where((h) => h['isTask'] != true).toList();
+    final todayPercent = todayHabitsOnly.isEmpty ? 0.0 : todayHabitsOnly.where((h) => h['completed'] == true).length / todayHabitsOnly.length;
+
     if (!mounted) return;
     setState(() {
       _habits = habits;
@@ -126,6 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
       _dateRecords = records;
       _extraPointsTotal = extraTotal;
       _streakInfo = streakInfo;
+      _todayHasHabits = todayHabitsOnly.isNotEmpty;
+      _todayHabitPercent = todayPercent;
     });
 
     final fullyCompletedNow = _computeFullyCompleted();
@@ -485,7 +497,18 @@ class _HomeScreenState extends State<HomeScreen> {
             child: SafeArea(
               child: Column(
                 children: [
-                  _LevelHeader(level: _level, totalPoints: _totalPoints, pointsToNextLevel: _pointsToNextLevel, streakInfo: _streakInfo),
+                  _LevelHeader(
+                    level: _level,
+                    totalPoints: _totalPoints,
+                    pointsToNextLevel: _pointsToNextLevel,
+                    streakInfo: _streakInfo,
+                    todayPercent: _todayHabitPercent,
+                    todayHasHabits: _todayHasHabits,
+                    onTapPercent: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => CalendarStatsScreen(selectedDay: DateTime.now())),
+                    ).then((_) => _loadAll()),
+                  ),
                   const SizedBox(height: 6),
                   _DateNav(date: _selectedDate, isToday: _isToday, onChange: _changeDate),
                   const SizedBox(height: 4),
@@ -675,8 +698,19 @@ class _LevelHeader extends StatelessWidget {
   final int totalPoints;
   final int pointsToNextLevel;
   final StreakInfo streakInfo;
+  final double todayPercent;
+  final bool todayHasHabits;
+  final VoidCallback? onTapPercent;
 
-  const _LevelHeader({required this.level, required this.totalPoints, required this.pointsToNextLevel, required this.streakInfo});
+  const _LevelHeader({
+    required this.level,
+    required this.totalPoints,
+    required this.pointsToNextLevel,
+    required this.streakInfo,
+    this.todayPercent = 0,
+    this.todayHasHabits = false,
+    this.onTapPercent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -718,6 +752,12 @@ class _LevelHeader extends StatelessWidget {
                           Text('${streakInfo.current}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w700)),
                         ] else if (streakInfo.last > 0)
                           Text('Última racha: ${streakInfo.last} días', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
+                        const SizedBox(width: 10),
+                        DayPercentRing(
+                          percent: todayPercent,
+                          hasData: todayHasHabits,
+                          onTap: onTapPercent,
+                        ),
                       ],
                     ),
                     AnimatedSwitcher(

@@ -70,6 +70,20 @@ class _MonthViewState extends State<MonthView> {
     _load();
   }
 
+  bool get _isCurrentMonth {
+    final now = DateTime.now();
+    return _focusedMonth.year == now.year && _focusedMonth.month == now.month;
+  }
+
+  void _goToCurrentMonth() {
+    final now = DateTime.now();
+    setState(() {
+      _focusedMonth = DateTime(now.year, now.month, 1);
+      _selectedDay = dateOnly(now);
+    });
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -83,9 +97,17 @@ class _MonthViewState extends State<MonthView> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _changeMonth(-1)),
-            Text(
-              '${_monthName(_focusedMonth.month)} ${_focusedMonth.year}',
-              style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 15),
+            GestureDetector(
+              onTap: _goToCurrentMonth,
+              child: Column(
+                children: [
+                  Text(
+                    '${_monthName(_focusedMonth.month)} ${_focusedMonth.year}',
+                    style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 15),
+                  ),
+                  if (!_isCurrentMonth) Text('Toca para ir a este mes', style: TextStyle(color: theme.colorScheme.primary, fontSize: 10)),
+                ],
+              ),
             ),
             IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _changeMonth(1)),
           ],

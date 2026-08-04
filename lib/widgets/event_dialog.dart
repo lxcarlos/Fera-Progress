@@ -4,6 +4,7 @@ import '../models/calendar_event.dart';
 import '../models/habit.dart';
 import '../constants/categories.dart';
 import 'glass_dialog.dart';
+import 'glass_picker.dart';
 
 /// Abre el formulario de creación/edición de un evento de calendario.
 /// Compartido entre la vista de Día y la vista de Semana para no duplicar código.
@@ -30,10 +31,23 @@ Future<void> showEventDialog(
   String recurrence = existing?.recurrence ?? 'none';
   int? linkedHabitId = existing?.linkedHabitId;
 
+  const recurrenceLabels = {
+    'none': 'No repetir',
+    'daily': 'Todos los días',
+    'weekly': 'Cada semana',
+    'monthly': 'Cada mes',
+  };
+
   await showDialog(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) {
+        Habit? linkedHabit;
+        if (linkedHabitId != null) {
+          final matches = habits.where((h) => h.id == linkedHabitId);
+          linkedHabit = matches.isEmpty ? null : matches.first;
+        }
+
         return GlassDialog(
           title: Text(existing == null ? 'Nuevo evento' : 'Editar evento'),
           content: Column(
@@ -70,39 +84,64 @@ Future<void> showEventDialog(
                     IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDialogState(() => endTime = null)),
                 ],
               ),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<int?>(
-                initialValue: linkedHabitId,
-                decoration: const InputDecoration(labelText: 'Vincular a hábito/tarea', border: InputBorder.none),
-                items: [
-                  const DropdownMenuItem<int?>(value: null, child: Text('Sin vincular')),
-                  ...habits.map((h) => DropdownMenuItem<int?>(value: h.id, child: Text(h.name))),
-                ],
-                onChanged: (value) => setDialogState(() => linkedHabitId = value),
+              const SizedBox(height: 10),
+              GlassPickerField<int?>(
+                label: 'Vincular a hábito/tarea',
+                valueLabel: linkedHabit?.name ?? 'Sin vincular',
+                valueIcon: linkedHabit != null ? Icons.link : Icons.link_off,
+                onTap: () async {
+                  final result = await showGlassPicker<int?>(
+                    context,
+                    title: 'Vincular a hábito/tarea',
+                    selected: linkedHabitId,
+                    options: [
+                      const GlassPickerOption<int?>(value: null, label: 'Sin vincular', icon: Icons.link_off),
+                      ...habits.map((h) => GlassPickerOption<int?>(value: h.id, label: h.name, icon: Icons.link)),
+                    ],
+                  );
+                  setDialogState(() => linkedHabitId = result);
+                },
               ),
               if (linkedHabitId == null) ...[
-                const SizedBox(height: 4),
-                DropdownButtonFormField<String>(
-                  initialValue: category,
-                  decoration: const InputDecoration(labelText: 'Categoría', border: InputBorder.none),
-                  items: kCategories.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value['label']))).toList(),
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => category = value);
+                const SizedBox(height: 10),
+                GlassPickerField<String>(
+                  label: 'Categoría',
+                  valueLabel: (kCategories[category] ?? kCategories['general']!)['label'] as String,
+                  valueIcon: (kCategories[category] ?? kCategories['general']!)['icon'] as IconData,
+                  valueColor: categoryAccent(context, category),
+                  onTap: () async {
+                    final result = await showGlassPicker<String>(
+                      context,
+                      title: 'Categoría',
+                      selected: category,
+                      options: kCategories.entries
+                          .map((e) => GlassPickerOption<String>(
+                                value: e.key,
+                                label: e.value['label'] as String,
+                                icon: e.value['icon'] as IconData,
+                                color: categoryAccent(context, e.key),
+                              ))
+                          .toList(),
+                    );
+                    if (result != null) setDialogState(() => category = result);
                   },
                 ),
               ],
-              const SizedBox(height: 4),
-              DropdownButtonFormField<String>(
-                initialValue: recurrence,
-                decoration: const InputDecoration(labelText: 'Repetir', border: InputBorder.none),
-                items: const [
-                  DropdownMenuItem(value: 'none', child: Text('No repetir')),
-                  DropdownMenuItem(value: 'daily', child: Text('Todos los días')),
-                  DropdownMenuItem(value: 'weekly', child: Text('Cada semana')),
-                  DropdownMenuItem(value: 'monthly', child: Text('Cada mes')),
-                ],
-                onChanged: (value) {
-                  if (value != null) setDialogState(() => recurrence = value);
+              const SizedBox(height: 10),
+              GlassPickerField<String>(
+                label: 'Repetir',
+                valueLabel: recurrenceLabels[recurrence] ?? 'No repetir',
+                valueIcon: Icons.repeat,
+                onTap: () async {
+                  final result = await showGlassPicker<String>(
+                    context,
+                    title: 'Repetir',
+                    selected: recurrence,
+                    options: recurrenceLabels.entries
+                        .map((e) => GlassPickerOption<String>(value: e.key, label: e.value, icon: Icons.repeat))
+                        .toList(),
+                  );
+                  if (result != null) setDialogState(() => recurrence = result);
                 },
               ),
             ],

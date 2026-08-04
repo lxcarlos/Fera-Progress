@@ -140,13 +140,22 @@ class CalendarScreenState extends State<CalendarScreen> {
   }
 
   Widget _weekNavHeader(ThemeData theme) {
+    final isCurrentWeek = isSameDate(weekStartFor(_focusedDate), weekStartFor(DateTime.now()));
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => _changeDay(-7)),
-          Text(_weekLabel(_focusedDate), style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 14)),
+          GestureDetector(
+            onTap: () => setState(() => _focusedDate = DateTime.now()),
+            child: Column(
+              children: [
+                Text(_weekLabel(_focusedDate), style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 14)),
+                if (!isCurrentWeek) Text('Toca para ir a esta semana', style: TextStyle(color: theme.colorScheme.primary, fontSize: 10)),
+              ],
+            ),
+          ),
           IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => _changeDay(7)),
         ],
       ),

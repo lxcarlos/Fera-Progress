@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/calendar_event.dart';
@@ -6,15 +7,14 @@ import '../utils/date_utils.dart';
 import 'event_dialog.dart';
 
 const double kWeekHourHeight = 56.0;
-const double kWeekDayColumnWidth = 74.0;
-const double kWeekHourLabelWidth = 38.0;
+const double kWeekHourLabelWidth = 32.0;
 
 const List<String> kWeekdayShort = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
 DateTime weekStartFor(DateTime d) {
   final date = dateOnly(d);
-  // DateTime.weekday: lunes=1 ... domingo=7. Queremos que la semana
-  // empiece en domingo, como en el ejemplo de Samsung Calendar.
+  // DateTime.weekday: lunes=1 ... domingo=7. La semana empieza en domingo,
+  // como en el ejemplo de Samsung Calendar.
   final diff = date.weekday % 7; // domingo -> 0
   return date.subtract(Duration(days: diff));
 }
@@ -31,8 +31,7 @@ class WeekView extends StatefulWidget {
 class _WeekViewState extends State<WeekView> {
   final DBHelper _dbHelper = DBHelper();
   final ScrollController _vController = ScrollController();
-  final ScrollController _hHeaderController = ScrollController();
-  final ScrollController _hBodyController = ScrollController();
+  Timer? _nowTimer;
 
   late DateTime _weekStart;
   Map<int, List<CalendarEvent>> _eventsByDayIndex = {};
@@ -43,19 +42,15 @@ class _WeekViewState extends State<WeekView> {
     super.initState();
     _weekStart = weekStartFor(widget.anchorDate);
     _load();
-    _hBodyController.addListener(_syncHeader);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_vController.hasClients) {
         final hour = DateTime.now().hour;
         _vController.jumpTo((hour - 1).clamp(0, 23) * kWeekHourHeight);
       }
     });
-  }
-
-  void _syncHeader() {
-    if (_hHeaderController.hasClients && _hHeaderController.offset != _hBodyController.offset) {
-      _hHeaderController.jumpTo(_hBodyController.offset);
-    }
+    _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -70,10 +65,8 @@ class _WeekViewState extends State<WeekView> {
 
   @override
   void dispose() {
-    _hBodyController.removeListener(_syncHeader);
     _vController.dispose();
-    _hHeaderController.dispose();
-    _hBodyController.dispose();
+    _nowTimer?.cancel();
     super.dispose();
   }
 
@@ -135,174 +128,193 @@ class _WeekViewState extends State<WeekView> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final today = dateOnly(DateTime.now());
+    final now = DateTime.now();
+    final nowMinutes = now.hour * 60 + now.minute;
 
-    return Column(
-      children: [
-        // Encabezado con los 7 días. Su scroll horizontal se mantiene
-        // sincronizado con el de la cuadrícula de abajo (ver _syncHeader).
-        Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Los 7 días se reparten TODO el ancho disponible, sin scroll
+        // horizontal, para que siempre se vean completos.
+        final dayColumnWidth = (constraints.maxWidth - kWeekHourLabelWidth) / 7;
+
+        return Column(
           children: [
-            const SizedBox(width: kWeekHourLabelWidth),
+            Row(
+              children: [
+                const SizedBox(width: kWeekHourLabelWidth),
+                ...List.generate(7, (i) {
+                  final day = _weekStart.add(Duration(days: i));
+                  final isToday = isSameDate(day, today);
+                  return SizedBox(
+                    width: dayColumnWidth,
+                    child: Column(
+                      children: [
+                        Text(kWeekdayShort[i], style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                        const SizedBox(height: 2),
+                        Container(
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: isToday ? theme.colorScheme.primary : Colors.transparent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text('${day.day}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isToday ? Colors.white : theme.colorScheme.onSurface,
+                              )),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+            Divider(height: 14, color: theme.colorScheme.onSurface.withOpacity(0.08)),
             Expanded(
               child: SingleChildScrollView(
-                controller: _hHeaderController,
-                scrollDirection: Axis.horizontal,
-                physics: const NeverScrollableScrollPhysics(),
-                child: Row(
-                  children: List.generate(7, (i) {
-                    final day = _weekStart.add(Duration(days: i));
-                    final isToday = isSameDate(day, today);
-                    return SizedBox(
-                      width: kWeekDayColumnWidth,
-                      child: Column(
+                controller: _vController,
+                child: SizedBox(
+                  height: 24 * kWeekHourHeight,
+                  child: Stack(
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(kWeekdayShort[i], style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface.withOpacity(0.5))),
-                          const SizedBox(height: 2),
-                          Container(
-                            width: 26,
-                            height: 26,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: isToday ? theme.colorScheme.primary : Colors.transparent,
-                              shape: BoxShape.circle,
+                          SizedBox(
+                            width: kWeekHourLabelWidth,
+                            child: Column(
+                              children: List.generate(
+                                24,
+                                (h) => SizedBox(
+                                  height: kWeekHourHeight,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text('${h.toString().padLeft(2, '0')}h',
+                                        style: TextStyle(fontSize: 8, color: theme.colorScheme.onSurface.withOpacity(0.35))),
+                                  ),
+                                ),
+                              ),
                             ),
-                            child: Text('${day.day}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: isToday ? Colors.white : theme.colorScheme.onSurface,
-                                )),
                           ),
-                        ],
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ),
-          ],
-        ),
-        Divider(height: 16, color: theme.colorScheme.onSurface.withOpacity(0.08)),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _vController,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: kWeekHourLabelWidth,
-                  child: Column(
-                    children: List.generate(
-                      24,
-                      (h) => SizedBox(
-                        height: kWeekHourHeight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text('${h.toString().padLeft(2, '0')}:00',
-                              style: TextStyle(fontSize: 9, color: theme.colorScheme.onSurface.withOpacity(0.35))),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    controller: _hBodyController,
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: List.generate(7, (i) {
-                        final day = _weekStart.add(Duration(days: i));
-                        final events = _eventsByDayIndex[i] ?? [];
-                        return SizedBox(
-                          width: kWeekDayColumnWidth,
-                          height: 24 * kWeekHourHeight,
-                          child: Stack(
-                            children: [
-                              Column(
-                                children: List.generate(
-                                  24,
-                                  (h) => GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => _openDialog(day, presetTime: TimeOfDay(hour: h, minute: 0)),
-                                    child: Container(
-                                      height: kWeekHourHeight,
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06)),
-                                          left: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.05)),
+                          ...List.generate(7, (i) {
+                            final day = _weekStart.add(Duration(days: i));
+                            final events = _eventsByDayIndex[i] ?? [];
+                            return SizedBox(
+                              width: dayColumnWidth,
+                              height: 24 * kWeekHourHeight,
+                              child: Stack(
+                                children: [
+                                  Column(
+                                    children: List.generate(
+                                      24,
+                                      (h) => GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => _openDialog(day, presetTime: TimeOfDay(hour: h, minute: 0)),
+                                        child: Container(
+                                          height: kWeekHourHeight,
+                                          decoration: BoxDecoration(
+                                            border: Border(
+                                              top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06)),
+                                              left: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.05)),
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              ...events.map((event) {
-                                final startMin = _minutesFromMidnight(event.startTime);
-                                final endMin = event.endTime != null ? _minutesFromMidnight(event.endTime!) : startMin + 30;
-                                final top = startMin / 60 * kWeekHourHeight;
-                                final durationMin = (endMin - startMin).clamp(20, 24 * 60);
-                                final height = durationMin / 60 * kWeekHourHeight;
-                                final color = categoryAccent(context, event.category);
-                                final completed = _completionByKey['${event.id}_${_dateKey(day)}'] ?? false;
-                                final isToday = isSameDate(day, today);
+                                  ...events.map((event) {
+                                    final startMin = _minutesFromMidnight(event.startTime);
+                                    final endMin = event.endTime != null ? _minutesFromMidnight(event.endTime!) : startMin + 30;
+                                    final top = startMin / 60 * kWeekHourHeight;
+                                    final durationMin = (endMin - startMin).clamp(20, 24 * 60);
+                                    final height = durationMin / 60 * kWeekHourHeight;
+                                    final color = categoryAccent(context, event.category);
+                                    final completed = _completionByKey['${event.id}_${_dateKey(day)}'] ?? false;
+                                    final isToday = isSameDate(day, today);
 
-                                return Positioned(
-                                  top: top,
-                                  left: 2,
-                                  right: 2,
-                                  height: height,
-                                  child: GestureDetector(
-                                    onTap: () => _openDialog(day, existing: event),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: color.withOpacity(completed ? 0.14 : 0.24),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: color.withOpacity(0.6)),
-                                      ),
-                                      child: Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              event.title,
-                                              maxLines: height > 30 ? 2 : 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w600,
-                                                color: theme.colorScheme.onSurface,
-                                                decoration: completed ? TextDecoration.lineThrough : null,
-                                              ),
-                                            ),
+                                    return Positioned(
+                                      top: top,
+                                      left: 2,
+                                      right: 2,
+                                      height: height,
+                                      child: GestureDetector(
+                                        onTap: () => _openDialog(day, existing: event),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: color.withOpacity(completed ? 0.14 : 0.24),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: color.withOpacity(0.6)),
                                           ),
-                                          if (height > 26)
-                                            GestureDetector(
-                                              onTap: () => _toggleComplete(event, day),
-                                              child: Icon(
-                                                completed ? Icons.check_circle : Icons.radio_button_unchecked,
-                                                size: 11,
-                                                color: isToday ? color : color.withOpacity(0.4),
+                                          child: Row(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  event.title,
+                                                  maxLines: height > 30 ? 2 : 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: theme.colorScheme.onSurface,
+                                                    decoration: completed ? TextDecoration.lineThrough : null,
+                                                  ),
+                                                ),
                                               ),
-                                            ),
-                                        ],
+                                              if (height > 26)
+                                                GestureDetector(
+                                                  onTap: () => _toggleComplete(event, day),
+                                                  child: Icon(
+                                                    completed ? Icons.check_circle : Icons.radio_button_unchecked,
+                                                    size: 11,
+                                                    color: isToday ? color : color.withOpacity(0.4),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                        );
-                      }),
-                    ),
+                                    );
+                                  }),
+                                ],
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                      // Línea roja de "ahora", solo sobre la columna del día de hoy.
+                      Positioned(
+                        top: (nowMinutes / 60 * kWeekHourHeight) - 1,
+                        left: kWeekHourLabelWidth + dayColumnWidth * _todayIndex(today),
+                        width: dayColumnWidth,
+                        child: _todayIndex(today) >= 0
+                            ? Row(
+                                children: [
+                                  Container(width: 5, height: 5, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
+                                  Expanded(child: Container(height: 1.5, color: Colors.red)),
+                                ],
+                              )
+                            : const SizedBox(),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
+  }
+
+  int _todayIndex(DateTime today) {
+    for (int i = 0; i < 7; i++) {
+      if (isSameDate(_weekStart.add(Duration(days: i)), today)) return i;
+    }
+    return -1;
   }
 }

@@ -55,7 +55,15 @@ class _YearViewState extends State<YearView> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _year--)),
-            Text('$_year', style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 16)),
+            GestureDetector(
+              onTap: () => setState(() => _year = DateTime.now().year),
+              child: Column(
+                children: [
+                  Text('$_year', style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.w700, fontSize: 16)),
+                  if (_year != DateTime.now().year) Text('Toca para ir a este año', style: TextStyle(color: theme.colorScheme.primary, fontSize: 10)),
+                ],
+              ),
+            ),
             IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _year++)),
           ],
         ),

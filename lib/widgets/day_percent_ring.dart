@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Pequeño anillo de progreso que muestra el % de hábitos cumplidos hoy.
-/// Se usa en la pantalla de Hábitos, junto al nivel y la racha.
+/// Se usa en la pantalla de Hábitos, junto al título.
 class DayPercentRing extends StatelessWidget {
   final double percent; // 0..1
   final bool hasData;

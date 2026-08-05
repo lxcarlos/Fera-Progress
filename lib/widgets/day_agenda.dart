@@ -4,11 +4,9 @@ import '../database/db_helper.dart';
 import '../models/calendar_event.dart';
 import '../constants/categories.dart';
 import '../utils/date_utils.dart';
+import '../utils/calendar_zoom.dart';
 import 'event_dialog.dart';
 
-const double kDefaultHourHeight = 60.0;
-const double kMinHourHeight = 28.0;
-const double kMaxHourHeight = 160.0;
 const double kHourLabelWidth = 42.0;
 
 class DayAgenda extends StatefulWidget {
@@ -27,13 +25,10 @@ class _DayAgendaState extends State<DayAgenda> {
   final ScrollController _scrollController = ScrollController();
   Timer? _nowTimer;
 
-  // Alto de cada hora, ajustable con el gesto de pellizcar (zoom).
-  double _hourHeight = kDefaultHourHeight;
+  // El alto de cada hora ahora vive en un controlador compartido
+  // (CalendarZoom) para que el zoom se mantenga igual entre día/semana.
+  double get _hourHeight => CalendarZoom.hourHeight.value;
 
-  // Seguimiento manual de los dedos activos para el pellizco. Se usa
-  // Listener (no GestureDetector) para no pelearse con el scroll normal
-  // de un dedo: Listener recibe los eventos de puntero sin "robarle" el
-  // gesto de arrastre vertical al SingleChildScrollView.
   final Map<int, Offset> _activePointers = {};
   double? _pinchStartDistance;
   double? _pinchStartHourHeight;
@@ -46,16 +41,20 @@ class _DayAgendaState extends State<DayAgenda> {
   void initState() {
     super.initState();
     _load();
+    CalendarZoom.hourHeight.addListener(_onZoomChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isToday && _scrollController.hasClients) {
         final hour = DateTime.now().hour;
         _scrollController.jumpTo((hour - 1).clamp(0, 23) * _hourHeight);
       }
     });
-    // Refresca la línea roja de "ahora" cada 30s sin recargar los eventos.
     _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+  }
+
+  void _onZoomChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -68,6 +67,7 @@ class _DayAgendaState extends State<DayAgenda> {
   void dispose() {
     _scrollController.dispose();
     _nowTimer?.cancel();
+    CalendarZoom.hourHeight.removeListener(_onZoomChanged);
     super.dispose();
   }
 
@@ -140,7 +140,7 @@ class _DayAgendaState extends State<DayAgenda> {
       final contentPosBefore = _pinchStartScrollOffset! + _pinchFocalScreenY!;
       final contentPosAfter = contentPosBefore * ratio;
       final newOffset = contentPosAfter - _pinchFocalScreenY!;
-      setState(() => _hourHeight = newHeight);
+      CalendarZoom.setHeight(newHeight);
       if (_scrollController.hasClients) {
         final maxExtent = _scrollController.position.maxScrollExtent;
         _scrollController.jumpTo(newOffset.clamp(0.0, maxExtent < 0 ? 0.0 : maxExtent));
@@ -180,6 +180,80 @@ class _DayAgendaState extends State<DayAgenda> {
           Expanded(child: Container(height: 1.5, color: Colors.red)),
         ],
       ),
+    );
+  }
+
+  // Contenido del bloque de evento, adaptado según el alto disponible para
+  // que NUNCA se desborde (evita el error "BOTTOM OVERFLOWED"). Al alejar
+  // el zoom, primero se oculta la hora, luego el ícono, y en bloques muy
+  // chicos se oculta hasta el título, dejando solo el color.
+  Widget _buildEventContent({
+    required BuildContext context,
+    required CalendarEvent event,
+    required double height,
+    required Color color,
+    required bool completed,
+    required ThemeData theme,
+  }) {
+    final catData = kCategories[event.category] ?? kCategories['general']!;
+
+    if (height < 14) {
+      // Demasiado chico: solo la barra de color, sin texto.
+      return const SizedBox.shrink();
+    }
+
+    final showIcon = height >= 26;
+    final showSubtitle = height >= 44;
+    final showCheck = height >= 22;
+    final titleFontSize = height < 22 ? 10.0 : 12.0;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (showIcon) ...[
+                    Icon(catData['icon'] as IconData, size: 11, color: color),
+                    const SizedBox(width: 3),
+                  ],
+                  Flexible(
+                    child: Text(
+                      event.title,
+                      maxLines: height > 40 ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontSize: titleFontSize,
+                        fontWeight: FontWeight.w600,
+                        decoration: completed ? TextDecoration.lineThrough : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (showSubtitle)
+                Text(event.startTime + (event.endTime != null ? ' - ${event.endTime}' : ''),
+                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 10)),
+            ],
+          ),
+        ),
+        if (showCheck)
+          GestureDetector(
+            onTap: () => _toggleComplete(event),
+            child: Icon(
+              completed ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16,
+              color: _isToday ? color : color.withOpacity(0.4),
+            ),
+          ),
+      ],
     );
   }
 
@@ -245,9 +319,9 @@ class _DayAgendaState extends State<DayAgenda> {
                             final top = startMin / 60 * _hourHeight;
                             final durationMin = (endMin - startMin).clamp(20, 24 * 60);
                             final height = durationMin / 60 * _hourHeight;
-                            final catData = kCategories[event.category] ?? kCategories['general']!;
                             final color = categoryAccent(context, event.category);
                             final completed = _completion[event.id] ?? false;
+                            final vPad = height < 26 ? 1.0 : 4.0;
 
                             return Positioned(
                               top: top,
@@ -257,54 +331,20 @@ class _DayAgendaState extends State<DayAgenda> {
                               child: GestureDetector(
                                 onTap: () => _openEventDialog(existing: event),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  clipBehavior: Clip.hardEdge,
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: vPad),
                                   decoration: BoxDecoration(
                                     color: color.withOpacity(completed ? 0.12 : 0.22),
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(color: color.withOpacity(0.6)),
                                   ),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Row(
-                                              children: [
-                                                Icon(catData['icon'] as IconData, size: 11, color: color),
-                                                const SizedBox(width: 3),
-                                                Expanded(
-                                                  child: Text(
-                                                    event.title,
-                                                    maxLines: height > 40 ? 2 : 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      color: theme.colorScheme.onSurface,
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.w600,
-                                                      decoration: completed ? TextDecoration.lineThrough : null,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            if (height > 36)
-                                              Text(event.startTime + (event.endTime != null ? ' - ${event.endTime}' : ''),
-                                                  style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 10)),
-                                          ],
-                                        ),
-                                      ),
-                                      GestureDetector(
-                                        onTap: () => _toggleComplete(event),
-                                        child: Icon(
-                                          completed ? Icons.check_circle : Icons.radio_button_unchecked,
-                                          size: 16,
-                                          color: _isToday ? color : color.withOpacity(0.4),
-                                        ),
-                                      ),
-                                    ],
+                                  child: _buildEventContent(
+                                    context: context,
+                                    event: event,
+                                    height: height,
+                                    color: color,
+                                    completed: completed,
+                                    theme: theme,
                                   ),
                                 ),
                               ),

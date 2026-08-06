@@ -8,8 +8,10 @@ import '../utils/color_utils.dart';
 import '../utils/date_utils.dart';
 import '../widgets/pulse_fire_icon.dart';
 import '../widgets/glass_dialog.dart';
+import '../widgets/glass_picker.dart';
 import '../widgets/celebration_overlay.dart';
 import '../widgets/day_percent_ring.dart';
+import '../utils/app_events.dart';
 import '../services/notification_service.dart';
 import '../services/streak_service.dart';
 import 'habit_detail_screen.dart';
@@ -90,6 +92,17 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadAll();
+    AppEvents.tick.addListener(_onExternalChange);
+  }
+
+  @override
+  void dispose() {
+    AppEvents.tick.removeListener(_onExternalChange);
+    super.dispose();
+  }
+
+  void _onExternalChange() {
+    if (mounted) _loadAll();
   }
 
   bool _computeFullyCompleted() {
@@ -237,12 +250,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 10),
                 GlassField(controller: descController, hint: 'Descripción (opcional)', maxLength: 140, maxLines: 2),
                 const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: selectedCategory,
-                  decoration: const InputDecoration(border: InputBorder.none),
-                  items: kCategories.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value['label']))).toList(),
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => selectedCategory = value);
+                GlassPickerField<String>(
+                  label: 'Categoría',
+                  valueLabel: (kCategories[selectedCategory] ?? kCategories['general']!)['label'] as String,
+                  valueIcon: (kCategories[selectedCategory] ?? kCategories['general']!)['icon'] as IconData,
+                  valueColor: categoryAccent(context, selectedCategory),
+                  onTap: () async {
+                    final result = await showGlassPicker<String>(
+                      context,
+                      title: 'Categoría',
+                      selected: selectedCategory,
+                      options: kCategories.entries
+                          .map((e) => GlassPickerOption<String>(
+                                value: e.key,
+                                label: e.value['label'] as String,
+                                icon: e.value['icon'] as IconData,
+                                color: categoryAccent(context, e.key),
+                              ))
+                          .toList(),
+                    );
+                    if (result != null) setDialogState(() => selectedCategory = result);
                   },
                 ),
                 const SizedBox(height: 4),
@@ -349,12 +376,26 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               GlassField(controller: descController, hint: 'Ej: Ayudé a un amigo'),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: selectedCategory,
-                decoration: const InputDecoration(border: InputBorder.none),
-                items: kCategories.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value['label']))).toList(),
-                onChanged: (value) {
-                  if (value != null) setDialogState(() => selectedCategory = value);
+              GlassPickerField<String>(
+                label: 'Categoría',
+                valueLabel: (kCategories[selectedCategory] ?? kCategories['general']!)['label'] as String,
+                valueIcon: (kCategories[selectedCategory] ?? kCategories['general']!)['icon'] as IconData,
+                valueColor: categoryAccent(context, selectedCategory),
+                onTap: () async {
+                  final result = await showGlassPicker<String>(
+                    context,
+                    title: 'Categoría',
+                    selected: selectedCategory,
+                    options: kCategories.entries
+                        .map((e) => GlassPickerOption<String>(
+                              value: e.key,
+                              label: e.value['label'] as String,
+                              icon: e.value['icon'] as IconData,
+                              color: categoryAccent(context, e.key),
+                            ))
+                        .toList(),
+                  );
+                  if (result != null) setDialogState(() => selectedCategory = result);
                 },
               ),
               const SizedBox(height: 8),
@@ -716,7 +757,6 @@ class _LevelHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final progress = (totalPoints % 100) / 100;
     final hasCurrentStreak = streakInfo.current > 0;
 
     return Container(
@@ -736,53 +776,33 @@ class _LevelHeader extends StatelessWidget {
                 color: hasCurrentStreak ? Colors.orange.withOpacity(0.3) : (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08)),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Text('Nivel $level', style: TextStyle(color: theme.colorScheme.onSurface, fontSize: 20, fontWeight: FontWeight.w700)),
-                        const SizedBox(width: 10),
-                        if (hasCurrentStreak) ...[
-                          const PulseFireIcon(size: 18),
-                          const SizedBox(width: 2),
-                          Text('${streakInfo.current}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w700)),
-                        ] else if (streakInfo.last > 0)
-                          Text('Última racha: ${streakInfo.last} días', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
-                        const SizedBox(width: 10),
-                        DayPercentRing(
-                          percent: todayPercent,
-                          hasData: todayHasHabits,
-                          onTap: onTapPercent,
-                        ),
-                      ],
-                    ),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      child: Text(
-                        '$totalPoints pts',
-                        key: ValueKey(totalPoints),
-                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 13),
-                      ),
+                    if (hasCurrentStreak) ...[
+                      const PulseFireIcon(size: 18),
+                      const SizedBox(width: 4),
+                      Text('${streakInfo.current}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w700)),
+                    ] else if (streakInfo.last > 0)
+                      Text('Última racha: ${streakInfo.last} días', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
+                    const SizedBox(width: 10),
+                    DayPercentRing(
+                      percent: todayPercent,
+                      hasData: todayHasHabits,
+                      onTap: onTapPercent,
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: theme.colorScheme.onSurface.withOpacity(0.08),
-                    valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: Text(
+                    '$totalPoints pts',
+                    key: ValueKey(totalPoints),
+                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 13),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text('Faltan $pointsToNextLevel pts para el siguiente nivel',
-                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
               ],
             ),
           ),
@@ -839,9 +859,12 @@ class _GlassCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: habit.isPaused
                     ? (isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02))
-                    : (isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)),
+                    : catAccent.withOpacity(isDark ? 0.09 : 0.06),
                 borderRadius: BorderRadius.circular(kCardRadius),
-                border: Border.all(color: habit.isTask ? accent.withOpacity(0.35) : (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08))),
+                border: Border.all(
+                  color: habit.isTask ? accent.withOpacity(0.35) : catAccent.withOpacity(0.32),
+                  width: habit.isTask ? 1 : 1.3,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

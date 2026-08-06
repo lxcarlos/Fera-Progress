@@ -7,6 +7,7 @@ import '../constants/categories.dart';
 import '../utils/color_utils.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/mascot_widget.dart';
+import '../utils/app_events.dart';
 import 'settings_screen.dart';
 
 const List<String> _kMotivationalPhrases = [
@@ -46,6 +47,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadData();
+    AppEvents.tick.addListener(_onExternalChange);
+  }
+
+  @override
+  void dispose() {
+    AppEvents.tick.removeListener(_onExternalChange);
+    super.dispose();
+  }
+
+  void _onExternalChange() {
+    if (mounted) _loadData();
   }
 
   Future<void> _loadData() async {
@@ -75,6 +87,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   int get _level => (_totalPoints / 100).floor() + 1;
+  int get _pointsToNextLevel => (_level * 100) - _totalPoints;
 
   String get _stageLabel {
     if (_level >= 10) return 'Bosque pleno';
@@ -247,6 +260,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             _statBox('Puntos', '$_totalPoints', theme),
                             _statBox('Racha máx.', '$_maxStreak días', theme),
                           ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Faltan $_pointsToNextLevel pts para el siguiente nivel',
+                          style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12),
                         ),
                       ],
                     ),

@@ -3,6 +3,8 @@ import '../models/habit.dart';
 import '../constants/categories.dart';
 import '../database/db_helper.dart';
 import '../services/notification_service.dart';
+import '../widgets/glass_dialog.dart';
+import '../widgets/glass_picker.dart';
 
 class HabitDetailScreen extends StatefulWidget {
   final Habit habit;
@@ -55,34 +57,53 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final gradient = isDark ? [const Color(0xFF000000), const Color(0xFF0D0D0D)] : [const Color(0xFFF7F9F7), const Color(0xFFECF3ED)];
+
     return Scaffold(
       appBar: AppBar(title: const Text('Editar hábito')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(
-          children: [
-            TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Nombre')),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _descController,
-              maxLength: 140,
-              maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Descripción (opcional)'),
-            ),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _category,
-              decoration: const InputDecoration(labelText: 'Categoría'),
-              items: kCategories.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value['label']))).toList(),
-              onChanged: (v) => setState(() => _category = v ?? _category),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Hora límite'),
-              subtitle: Text(_timeLimit == null ? 'Sin hora límite' : _timeLimit!.format(context)),
-              trailing: Wrap(
+      body: Container(
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              GlassField(controller: _nameController, hint: 'Nombre'),
+              const SizedBox(height: 12),
+              GlassField(controller: _descController, hint: 'Descripción (opcional)', maxLength: 140, maxLines: 3),
+              const SizedBox(height: 12),
+              GlassPickerField<String>(
+                label: 'Categoría',
+                valueLabel: (kCategories[_category] ?? kCategories['general']!)['label'] as String,
+                valueIcon: (kCategories[_category] ?? kCategories['general']!)['icon'] as IconData,
+                valueColor: categoryAccent(context, _category),
+                onTap: () async {
+                  final result = await showGlassPicker<String>(
+                    context,
+                    title: 'Categoría',
+                    selected: _category,
+                    options: kCategories.entries
+                        .map((e) => GlassPickerOption<String>(
+                              value: e.key,
+                              label: e.value['label'] as String,
+                              icon: e.value['icon'] as IconData,
+                              color: categoryAccent(context, e.key),
+                            ))
+                        .toList(),
+                  );
+                  if (result != null) setState(() => _category = result);
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
                 children: [
+                  Expanded(
+                    child: Text(
+                      _timeLimit == null ? 'Sin hora límite' : 'Hora límite: ${_timeLimit!.format(context)}',
+                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                    ),
+                  ),
                   TextButton(
                     onPressed: () async {
                       final t = await showTimePicker(context: context, initialTime: _timeLimit ?? TimeOfDay.now());
@@ -91,16 +112,17 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     child: const Text('Elegir'),
                   ),
                   if (_timeLimit != null)
-                    IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _timeLimit = null)),
+                    IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _timeLimit = null)),
                 ],
               ),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Fecha límite'),
-              subtitle: Text(_dueDate == null ? 'Sin fecha límite' : '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}'),
-              trailing: Wrap(
+              Row(
                 children: [
+                  Expanded(
+                    child: Text(
+                      _dueDate == null ? 'Sin fecha límite' : 'Fecha límite: ${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}',
+                      style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                    ),
+                  ),
                   TextButton(
                     onPressed: () async {
                       final d = await showDatePicker(
@@ -114,16 +136,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     child: const Text('Elegir'),
                   ),
                   if (_dueDate != null)
-                    IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _dueDate = null)),
+                    IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _dueDate = null)),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _save,
-              child: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Guardar cambios')),
-            ),
-          ],
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: _save,
+                child: const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('Guardar cambios')),
+              ),
+            ],
+          ),
         ),
       ),
     );

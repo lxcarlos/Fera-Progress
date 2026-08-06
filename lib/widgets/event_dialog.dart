@@ -6,6 +6,117 @@ import '../constants/categories.dart';
 import 'glass_dialog.dart';
 import 'glass_picker.dart';
 
+// Orden L M X J V S D, con el valor real de DateTime.weekday (1=lunes..7=domingo).
+const List<Map<String, dynamic>> _kWeekdayOptions = [
+  {'value': 1, 'label': 'L'},
+  {'value': 2, 'label': 'M'},
+  {'value': 3, 'label': 'X'},
+  {'value': 4, 'label': 'J'},
+  {'value': 5, 'label': 'V'},
+  {'value': 6, 'label': 'S'},
+  {'value': 7, 'label': 'D'},
+];
+
+/// Fila de bolitas L M X J V S D para elegir en qué días de la semana se
+/// repite el evento. Selección múltiple: se puede tocar más de una.
+class _WeekdaySelector extends StatelessWidget {
+  final List<int> selected;
+  final ValueChanged<List<int>> onChanged;
+  final Color accent;
+
+  const _WeekdaySelector({required this.selected, required this.onChanged, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: _kWeekdayOptions.map((opt) {
+        final value = opt['value'] as int;
+        final isSelected = selected.contains(value);
+        return GestureDetector(
+          onTap: () {
+            final next = List<int>.from(selected);
+            if (isSelected) {
+              next.remove(value);
+            } else {
+              next.add(value);
+            }
+            onChanged(next);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isSelected ? accent : (isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)),
+              border: Border.all(color: isSelected ? accent : (isDark ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.1))),
+            ),
+            child: Text(
+              opt['label'] as String,
+              style: TextStyle(
+                color: isSelected ? Colors.white : theme.colorScheme.onSurface.withOpacity(0.6),
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+/// Pregunta cómo eliminar un evento repetido: solo esta ocurrencia, o esta
+/// y todas las siguientes (las anteriores a la fecha actual no se tocan).
+/// Devuelve 'one', 'forward' o null (canceló).
+Future<String?> _askDeleteScope(BuildContext context, {required bool isRecurring}) {
+  if (!isRecurring) {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => GlassDialog(
+        title: const Text('¿Eliminar evento?'),
+        content: const Text('Esta acción no se puede deshacer.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, 'one'),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  return showDialog<String>(
+    context: context,
+    builder: (context) => GlassDialog(
+      title: const Text('¿Eliminar evento repetido?'),
+      content: const Text(
+        'Este evento se repite. Elige qué quieres eliminar. Esta acción no se puede deshacer.',
+        style: TextStyle(fontSize: 13),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'one'),
+          child: const Text('Solo este', style: TextStyle(color: Colors.red)),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () => Navigator.pop(context, 'forward'),
+          child: const Text('Este y siguientes'),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Abre el formulario de creación/edición de un evento de calendario.
 /// Compartido entre la vista de Día y la vista de Semana para no duplicar código.
 Future<void> showEventDialog(
@@ -29,23 +140,24 @@ Future<void> showEventDialog(
       : null;
   String category = existing?.category ?? 'general';
   String recurrence = existing?.recurrence ?? 'none';
-  int? linkedHabitId = existing?.linkedHabitId;
-
-  const recurrenceLabels = {
-    'none': 'No repetir',
-    'daily': 'Todos los días',
-    'weekly': 'Cada semana',
-    'monthly': 'Cada mes',
-  };
+  List<int> weekdays = List<int>.from(existing?.weekdays ?? const []);
+  DateTime? repeatUntil = existing?.repeatUntil;
+  List<int> linkedHabitIds = List<int>.from(existing?.linkedHabitIds ?? const []);
 
   await showDialog(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) {
-        Habit? linkedHabit;
-        if (linkedHabitId != null) {
-          final matches = habits.where((h) => h.id == linkedHabitId);
-          linkedHabit = matches.isEmpty ? null : matches.first;
+        final linkedHabits = habits.where((h) => linkedHabitIds.contains(h.id)).toList();
+        final linkAccent = Theme.of(context).colorScheme.primary;
+
+        String linkLabel;
+        if (linkedHabits.isEmpty) {
+          linkLabel = 'Sin vincular';
+        } else if (linkedHabits.length == 1) {
+          linkLabel = linkedHabits.first.name;
+        } else {
+          linkLabel = '${linkedHabits.length} vinculados';
         }
 
         return GlassDialog(
@@ -86,23 +198,21 @@ Future<void> showEventDialog(
               ),
               const SizedBox(height: 10),
               GlassPickerField<int?>(
-                label: 'Vincular a hábito/tarea',
-                valueLabel: linkedHabit?.name ?? 'Sin vincular',
-                valueIcon: linkedHabit != null ? Icons.link : Icons.link_off,
+                label: 'Vincular a hábito(s)/tarea(s)',
+                valueLabel: linkLabel,
+                valueIcon: linkedHabits.isNotEmpty ? Icons.link : Icons.link_off,
+                valueColor: linkedHabits.isNotEmpty ? linkAccent : null,
                 onTap: () async {
-                  final result = await showGlassPicker<int?>(
+                  final result = await showGlassMultiPicker<int>(
                     context,
-                    title: 'Vincular a hábito/tarea',
-                    selected: linkedHabitId,
-                    options: [
-                      const GlassPickerOption<int?>(value: null, label: 'Sin vincular', icon: Icons.link_off),
-                      ...habits.map((h) => GlassPickerOption<int?>(value: h.id, label: h.name, icon: Icons.link)),
-                    ],
+                    title: 'Vincular a hábito(s)/tarea(s)',
+                    selected: linkedHabitIds,
+                    options: habits.map((h) => GlassPickerOption<int>(value: h.id!, label: h.name, icon: Icons.link)).toList(),
                   );
-                  setDialogState(() => linkedHabitId = result);
+                  if (result != null) setDialogState(() => linkedHabitIds = result);
                 },
               ),
-              if (linkedHabitId == null) ...[
+              if (linkedHabitIds.isEmpty) ...[
                 const SizedBox(height: 10),
                 GlassPickerField<String>(
                   label: 'Categoría',
@@ -130,27 +240,81 @@ Future<void> showEventDialog(
               const SizedBox(height: 10),
               GlassPickerField<String>(
                 label: 'Repetir',
-                valueLabel: recurrenceLabels[recurrence] ?? 'No repetir',
+                valueLabel: recurrence == 'weekly' ? '1 vez cada semana' : 'No repetir',
                 valueIcon: Icons.repeat,
                 onTap: () async {
                   final result = await showGlassPicker<String>(
                     context,
                     title: 'Repetir',
                     selected: recurrence,
-                    options: recurrenceLabels.entries
-                        .map((e) => GlassPickerOption<String>(value: e.key, label: e.value, icon: Icons.repeat))
-                        .toList(),
+                    options: const [
+                      GlassPickerOption<String>(value: 'none', label: 'No repetir', icon: Icons.event),
+                      GlassPickerOption<String>(value: 'weekly', label: '1 vez cada semana', icon: Icons.repeat),
+                    ],
                   );
-                  if (result != null) setDialogState(() => recurrence = result);
+                  if (result != null) {
+                    setDialogState(() {
+                      recurrence = result;
+                      if (recurrence == 'none') {
+                        weekdays = [];
+                        repeatUntil = null;
+                      } else if (recurrence == 'weekly' && weekdays.isEmpty) {
+                        // Por defecto, marca el día de la fecha del evento.
+                        weekdays = [date.weekday];
+                      }
+                    });
+                  }
                 },
               ),
+              if (recurrence == 'weekly') ...[
+                const SizedBox(height: 12),
+                Text('¿Qué días?', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
+                const SizedBox(height: 8),
+                _WeekdaySelector(
+                  selected: weekdays,
+                  accent: Theme.of(context).colorScheme.primary,
+                  onChanged: (v) => setDialogState(() => weekdays = v),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        repeatUntil == null
+                            ? 'Repetir hasta: sin fecha límite'
+                            : 'Repetir hasta: ${repeatUntil!.day}/${repeatUntil!.month}/${repeatUntil!.year}',
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: repeatUntil ?? date.add(const Duration(days: 30)),
+                          firstDate: date,
+                          lastDate: date.add(const Duration(days: 3650)),
+                        );
+                        if (picked != null) setDialogState(() => repeatUntil = picked);
+                      },
+                      child: const Text('Elegir'),
+                    ),
+                    if (repeatUntil != null)
+                      IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDialogState(() => repeatUntil = null)),
+                  ],
+                ),
+              ],
             ],
           ),
           actions: [
             if (existing != null)
               TextButton(
                 onPressed: () async {
-                  await dbHelper.deleteEvent(existing.id!);
+                  final scope = await _askDeleteScope(context, isRecurring: existing.isRecurring);
+                  if (scope == null) return;
+                  if (scope == 'one') {
+                    await dbHelper.deleteEventOccurrence(existing, date);
+                  } else if (scope == 'forward') {
+                    await dbHelper.deleteEventFromDateOnward(existing, date);
+                  }
                   if (context.mounted) Navigator.pop(context);
                   onSaved();
                 },
@@ -164,10 +328,12 @@ Future<void> showEventDialog(
                 final endStr = endTime != null ? '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}' : null;
 
                 String finalCategory = category;
-                if (linkedHabitId != null) {
-                  final match = habits.where((h) => h.id == linkedHabitId);
+                if (linkedHabitIds.isNotEmpty) {
+                  final match = habits.where((h) => h.id == linkedHabitIds.first);
                   if (match.isNotEmpty) finalCategory = match.first.category;
                 }
+
+                final effectiveRecurrence = (recurrence == 'weekly' && weekdays.isNotEmpty) ? 'weekly' : 'none';
 
                 if (existing == null) {
                   final event = CalendarEvent(
@@ -176,24 +342,26 @@ Future<void> showEventDialog(
                     startTime: startStr,
                     endTime: endStr,
                     date: date,
-                    recurrence: recurrence,
+                    recurrence: effectiveRecurrence,
+                    weekdays: effectiveRecurrence == 'weekly' ? weekdays : const [],
+                    repeatUntil: effectiveRecurrence == 'weekly' ? repeatUntil : null,
                     category: finalCategory,
-                    linkedHabitId: linkedHabitId,
                     createdAt: DateTime.now(),
                   );
-                  await dbHelper.createEvent(event);
+                  await dbHelper.createEvent(event, linkedHabitIds: linkedHabitIds);
                 } else {
                   final updated = existing.copyWith(
                     title: titleController.text.trim(),
                     description: descController.text.trim().isEmpty ? null : descController.text.trim(),
                     startTime: startStr,
                     endTime: endStr,
-                    recurrence: recurrence,
+                    recurrence: effectiveRecurrence,
+                    weekdays: effectiveRecurrence == 'weekly' ? weekdays : const [],
+                    repeatUntil: effectiveRecurrence == 'weekly' ? repeatUntil : null,
+                    clearRepeatUntil: effectiveRecurrence != 'weekly' || repeatUntil == null,
                     category: finalCategory,
-                    linkedHabitId: linkedHabitId,
-                    clearLink: linkedHabitId == null,
                   );
-                  await dbHelper.updateEvent(updated);
+                  await dbHelper.updateEvent(updated, linkedHabitIds: linkedHabitIds);
                 }
                 if (context.mounted) Navigator.pop(context);
                 onSaved();

@@ -5,6 +5,7 @@ import '../models/calendar_event.dart';
 import '../constants/categories.dart';
 import '../utils/date_utils.dart';
 import '../utils/calendar_zoom.dart';
+import '../utils/app_events.dart';
 import 'event_dialog.dart';
 
 const double kWeekHourLabelWidth = 32.0;
@@ -51,6 +52,7 @@ class _WeekViewState extends State<WeekView> {
     _weekStart = weekStartFor(widget.anchorDate);
     _load();
     CalendarZoom.hourHeight.addListener(_onZoomChanged);
+    AppEvents.tick.addListener(_onExternalChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_vController.hasClients) {
         final hour = DateTime.now().hour;
@@ -64,6 +66,12 @@ class _WeekViewState extends State<WeekView> {
 
   void _onZoomChanged() {
     if (mounted) setState(() {});
+  }
+
+  // Igual que en DayAgenda: si algo cambia desde Hábitos u otra pantalla,
+  // esta vista se refresca sola al instante.
+  void _onExternalChange() {
+    if (mounted) _load();
   }
 
   @override
@@ -81,6 +89,7 @@ class _WeekViewState extends State<WeekView> {
     _vController.dispose();
     _nowTimer?.cancel();
     CalendarZoom.hourHeight.removeListener(_onZoomChanged);
+    AppEvents.tick.removeListener(_onExternalChange);
     super.dispose();
   }
 
@@ -129,11 +138,9 @@ class _WeekViewState extends State<WeekView> {
     if (event.id == null) return;
     final key = '${event.id}_${_dateKey(day)}';
     final current = _completionByKey[key] ?? false;
-    final newValue = !current;
-    await _dbHelper.setEventCompletion(event.id!, day, newValue);
-    if (event.linkedHabitId != null) {
-      await _dbHelper.setHabitCompletionWithEffects(event.linkedHabitId!, day, newValue);
-    }
+    // Igual que en Día: un solo método aplica el cambio al evento y a TODOS
+    // sus hábitos/tareas vinculados de una vez, al instante.
+    await _dbHelper.toggleEventCompletion(event.id!, day, completed: !current);
     _load();
     widget.onChanged?.call();
   }
@@ -176,9 +183,11 @@ class _WeekViewState extends State<WeekView> {
     if (_activePointers.length < 2) _pinchStartDistance = null;
   }
 
-  // Contenido del bloque de evento adaptado al alto disponible, igual
-  // filosofía que en DayAgenda: evita el "BOTTOM OVERFLOWED" ocultando
-  // primero el checkbox y, en bloques muy chicos, todo el texto.
+  // Contenido del bloque de evento adaptado al alto disponible, misma
+  // filosofía que en DayAgenda: primero se oculta el checkbox, luego todo
+  // el texto, y además va envuelto en OverflowBox/ClipRect como red de
+  // seguridad final (ver build) para que NUNCA aparezca el aviso de
+  // "BOTTOM OVERFLOWED", sin importar cuántos eventos choquen entre sí.
   Widget _buildEventContent({
     required CalendarEvent event,
     required double height,
@@ -188,9 +197,9 @@ class _WeekViewState extends State<WeekView> {
     required ThemeData theme,
     required VoidCallback onToggle,
   }) {
-    if (height < 12) return const SizedBox.shrink();
+    if (height < 13) return const SizedBox.shrink();
 
-    final showCheck = height >= 26;
+    final showCheck = height >= 28;
     final fontSize = height < 20 ? 8.0 : 9.0;
 
     return Row(
@@ -207,6 +216,7 @@ class _WeekViewState extends State<WeekView> {
               fontWeight: FontWeight.w600,
               color: theme.colorScheme.onSurface,
               decoration: completed ? TextDecoration.lineThrough : null,
+              height: 1.0,
             ),
           ),
         ),
@@ -355,14 +365,22 @@ class _WeekViewState extends State<WeekView> {
                                               borderRadius: BorderRadius.circular(6),
                                               border: Border.all(color: color.withOpacity(0.6)),
                                             ),
-                                            child: _buildEventContent(
-                                              event: event,
-                                              height: height,
-                                              color: color,
-                                              completed: completed,
-                                              isToday: isToday,
-                                              theme: theme,
-                                              onToggle: () => _toggleComplete(event, day),
+                                            // Misma red de seguridad anti-overflow que en Día.
+                                            child: ClipRect(
+                                              child: OverflowBox(
+                                                alignment: Alignment.topLeft,
+                                                minHeight: 0,
+                                                maxHeight: double.infinity,
+                                                child: _buildEventContent(
+                                                  event: event,
+                                                  height: height,
+                                                  color: color,
+                                                  completed: completed,
+                                                  isToday: isToday,
+                                                  theme: theme,
+                                                  onToggle: () => _toggleComplete(event, day),
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),

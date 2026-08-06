@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/habit.dart';
 import '../models/calendar_event.dart';
 import '../utils/recurrence_utils.dart';
+import '../utils/app_events.dart';
 
 class DBHelper {
   static final DBHelper _instance = DBHelper._internal();
@@ -21,7 +22,7 @@ class DBHelper {
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'feraprogress.db');
-    return await openDatabase(path, version: 6, onCreate: _createDB, onUpgrade: _upgradeDB);
+    return await openDatabase(path, version: 7, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -73,8 +74,9 @@ class DBHelper {
         endTime TEXT,
         date TEXT NOT NULL,
         recurrence TEXT NOT NULL DEFAULT 'none',
+        weekdays TEXT,
+        repeatUntil TEXT,
         category TEXT NOT NULL DEFAULT 'general',
-        linkedHabitId INTEGER,
         createdAt TEXT NOT NULL
       )
     ''');
@@ -86,6 +88,25 @@ class DBHelper {
         date TEXT NOT NULL,
         completed INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (eventId) REFERENCES calendar_events (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE event_exceptions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eventId INTEGER NOT NULL,
+        date TEXT NOT NULL,
+        FOREIGN KEY (eventId) REFERENCES calendar_events (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE event_habit_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        eventId INTEGER NOT NULL,
+        habitId INTEGER NOT NULL,
+        FOREIGN KEY (eventId) REFERENCES calendar_events (id) ON DELETE CASCADE,
+        FOREIGN KEY (habitId) REFERENCES habits (id) ON DELETE CASCADE
       )
     ''');
   }
@@ -140,11 +161,72 @@ class DBHelper {
         )
       ''');
     }
+    if (oldVersion < 7) {
+      // Nuevas columnas para repetición semanal por día y fecha límite.
+      await db.execute("ALTER TABLE calendar_events ADD COLUMN weekdays TEXT");
+      await db.execute("ALTER TABLE calendar_events ADD COLUMN repeatUntil TEXT");
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS event_exceptions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          eventId INTEGER NOT NULL,
+          date TEXT NOT NULL,
+          FOREIGN KEY (eventId) REFERENCES calendar_events (id) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS event_habit_links (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          eventId INTEGER NOT NULL,
+          habitId INTEGER NOT NULL,
+          FOREIGN KEY (eventId) REFERENCES calendar_events (id) ON DELETE CASCADE,
+          FOREIGN KEY (habitId) REFERENCES habits (id) ON DELETE CASCADE
+        )
+      ''');
+
+      // Migrar eventos existentes al nuevo esquema de recurrencia:
+      // 'daily' -> semanal con los 7 días marcados (mismo comportamiento).
+      // 'weekly' -> semanal con solo el día original marcado.
+      // 'monthly' (ya no existe en la app) -> se conserva como fecha única.
+      final existingEvents = await db.query('calendar_events');
+      for (final e in existingEvents) {
+        final id = e['id'] as int;
+        final oldRecurrence = e['recurrence'] as String? ?? 'none';
+        final anchor = DateTime.parse(e['date'] as String);
+
+        String newRecurrence = 'none';
+        String? weekdaysCsv;
+        if (oldRecurrence == 'daily') {
+          newRecurrence = 'weekly';
+          weekdaysCsv = '1,2,3,4,5,6,7';
+        } else if (oldRecurrence == 'weekly') {
+          newRecurrence = 'weekly';
+          weekdaysCsv = '${anchor.weekday}';
+        }
+
+        await db.update(
+          'calendar_events',
+          {'recurrence': newRecurrence, 'weekdays': weekdaysCsv},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+
+        // linkedHabitId (columna vieja, si existía) -> event_habit_links.
+        if (e.containsKey('linkedHabitId') && e['linkedHabitId'] != null) {
+          await db.insert('event_habit_links', {'eventId': id, 'habitId': e['linkedHabitId']});
+        }
+      }
+    }
   }
+
+  // ---- Hábitos ----
 
   Future<int> createHabit(Habit habit) async {
     final db = await database;
-    return await db.insert('habits', habit.toMap());
+    final id = await db.insert('habits', habit.toMap());
+    AppEvents.notifyDataChanged();
+    return id;
   }
 
   Future<List<Habit>> getAllHabits() async {
@@ -155,12 +237,16 @@ class DBHelper {
 
   Future<int> updateHabit(Habit habit) async {
     final db = await database;
-    return await db.update('habits', habit.toMap(), where: 'id = ?', whereArgs: [habit.id]);
+    final res = await db.update('habits', habit.toMap(), where: 'id = ?', whereArgs: [habit.id]);
+    AppEvents.notifyDataChanged();
+    return res;
   }
 
   Future<int> deleteHabit(int id) async {
     final db = await database;
-    return await db.delete('habits', where: 'id = ?', whereArgs: [id]);
+    final res = await db.delete('habits', where: 'id = ?', whereArgs: [id]);
+    AppEvents.notifyDataChanged();
+    return res;
   }
 
   Future<void> markHabitCompletion(int habitId, DateTime date, bool completed) async {
@@ -183,6 +269,7 @@ class DBHelper {
         'completedAt': completed ? DateTime.now().toIso8601String() : null,
       });
     }
+    AppEvents.notifyDataChanged();
   }
 
   Future<void> unmarkHabitCompletion(int habitId, DateTime date) async {
@@ -194,6 +281,7 @@ class DBHelper {
       where: 'habitId = ? AND date = ?',
       whereArgs: [habitId, dateStr],
     );
+    AppEvents.notifyDataChanged();
   }
 
   Future<bool> wasCompletedOn(int habitId, DateTime date) async {
@@ -336,12 +424,14 @@ class DBHelper {
 
   Future<int> createExtraActivity({required String description, required int points, required String category}) async {
     final db = await database;
-    return await db.insert('extra_activities', {
+    final id = await db.insert('extra_activities', {
       'description': description,
       'points': points,
       'category': category,
       'date': DateTime.now().toIso8601String(),
     });
+    AppEvents.notifyDataChanged();
+    return id;
   }
 
   Future<List<Map<String, dynamic>>> getRecentExtraActivities({int limit = 10}) async {
@@ -351,7 +441,9 @@ class DBHelper {
 
   Future<int> deleteExtraActivity(int id) async {
     final db = await database;
-    return await db.delete('extra_activities', where: 'id = ?', whereArgs: [id]);
+    final res = await db.delete('extra_activities', where: 'id = ?', whereArgs: [id]);
+    AppEvents.notifyDataChanged();
+    return res;
   }
 
   Future<int> getExtraActivitiesTotalPoints() async {
@@ -434,23 +526,73 @@ class DBHelper {
         await db.update('habits', {'points': newPoints, 'currentStreak': newStreak}, where: 'id = ?', whereArgs: [habitId]);
       }
     }
+    AppEvents.notifyDataChanged();
   }
 
   // ---- Eventos del calendario ----
 
-  Future<int> createEvent(CalendarEvent event) async {
+  Future<int> createEvent(CalendarEvent event, {List<int> linkedHabitIds = const []}) async {
     final db = await database;
-    return await db.insert('calendar_events', event.toMap());
+    final id = await db.insert('calendar_events', event.toMap());
+    for (final habitId in linkedHabitIds) {
+      await db.insert('event_habit_links', {'eventId': id, 'habitId': habitId});
+    }
+    AppEvents.notifyDataChanged();
+    return id;
   }
 
-  Future<int> updateEvent(CalendarEvent event) async {
+  Future<int> updateEvent(CalendarEvent event, {List<int>? linkedHabitIds}) async {
     final db = await database;
-    return await db.update('calendar_events', event.toMap(), where: 'id = ?', whereArgs: [event.id]);
+    final res = await db.update('calendar_events', event.toMap(), where: 'id = ?', whereArgs: [event.id]);
+    if (linkedHabitIds != null && event.id != null) {
+      await db.delete('event_habit_links', where: 'eventId = ?', whereArgs: [event.id]);
+      for (final habitId in linkedHabitIds) {
+        await db.insert('event_habit_links', {'eventId': event.id, 'habitId': habitId});
+      }
+    }
+    AppEvents.notifyDataChanged();
+    return res;
   }
 
-  Future<int> deleteEvent(int id) async {
+  /// Elimina el evento completo (todas sus ocurrencias, pasadas y futuras).
+  Future<void> deleteEventAll(int id) async {
     final db = await database;
-    return await db.delete('calendar_events', where: 'id = ?', whereArgs: [id]);
+    await db.delete('calendar_events', where: 'id = ?', whereArgs: [id]);
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Elimina solo la ocurrencia de [date], sin afectar las demás fechas de
+  /// un evento repetido (agrega una excepción). Si el evento no se repite,
+  /// se elimina por completo.
+  Future<void> deleteEventOccurrence(CalendarEvent event, DateTime date) async {
+    final db = await database;
+    if (event.id == null) return;
+    if (!event.isRecurring) {
+      await db.delete('calendar_events', where: 'id = ?', whereArgs: [event.id]);
+    } else {
+      final dateStr = DateTime(date.year, date.month, date.day).toIso8601String().split('T')[0];
+      await db.insert('event_exceptions', {'eventId': event.id, 'date': dateStr});
+    }
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Elimina esta ocurrencia y todas las siguientes, conservando las
+  /// ocurrencias anteriores a [date] intactas.
+  Future<void> deleteEventFromDateOnward(CalendarEvent event, DateTime date) async {
+    final db = await database;
+    if (event.id == null) return;
+    final anchor = DateTime(event.date.year, event.date.month, event.date.day);
+    final target = DateTime(date.year, date.month, date.day);
+
+    if (!event.isRecurring || !target.isAfter(anchor)) {
+      // No hay ocurrencias anteriores que conservar: se elimina todo.
+      await db.delete('calendar_events', where: 'id = ?', whereArgs: [event.id]);
+    } else {
+      final dayBefore = target.subtract(const Duration(days: 1));
+      final updated = event.copyWith(repeatUntil: dayBefore);
+      await db.update('calendar_events', updated.toMap(), where: 'id = ?', whereArgs: [event.id]);
+    }
+    AppEvents.notifyDataChanged();
   }
 
   Future<List<CalendarEvent>> getAllEvents() async {
@@ -459,11 +601,34 @@ class DBHelper {
     return result.map((m) => CalendarEvent.fromMap(m)).toList();
   }
 
+  Future<List<int>> getLinkedHabitIds(int eventId) async {
+    final db = await database;
+    final rows = await db.query('event_habit_links', where: 'eventId = ?', whereArgs: [eventId]);
+    return rows.map((r) => r['habitId'] as int).toList();
+  }
+
+  Future<Set<String>> _getExceptionDates(int eventId) async {
+    final db = await database;
+    final rows = await db.query('event_exceptions', where: 'eventId = ?', whereArgs: [eventId], columns: ['date']);
+    return rows.map((r) => r['date'] as String).toSet();
+  }
+
   Future<List<CalendarEvent>> getEventsForDate(DateTime date) async {
-    final all = await getAllEvents();
-    final filtered = all.where((e) => eventOccursOnDate(e, date)).toList();
-    filtered.sort((a, b) => a.startTime.compareTo(b.startTime));
-    return filtered;
+    final db = await database;
+    final rawEvents = await db.query('calendar_events');
+
+    final List<CalendarEvent> result = [];
+    for (final map in rawEvents) {
+      var event = CalendarEvent.fromMap(map);
+      final exceptionDates = event.isRecurring ? await _getExceptionDates(event.id!) : const <String>{};
+      if (!eventOccursOnDate(event, date, exceptionDates: exceptionDates)) continue;
+
+      final links = await getLinkedHabitIds(event.id!);
+      event = event.copyWith(linkedHabitIds: links);
+      result.add(event);
+    }
+    result.sort((a, b) => a.startTime.compareTo(b.startTime));
+    return result;
   }
 
   Future<bool> getEventCompletion(int eventId, DateTime date) async {
@@ -482,5 +647,19 @@ class DBHelper {
     } else {
       await db.insert('event_records', {'eventId': eventId, 'date': dateStr, 'completed': completed ? 1 : 0});
     }
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Marca/desmarca un evento Y, en el mismo momento, aplica el efecto a
+  /// TODOS los hábitos/tareas vinculados a él (puede ser uno o varios).
+  /// Un único punto de entrada para que Día, Semana y cualquier otra
+  /// pantalla queden sincronizados al instante.
+  Future<void> toggleEventCompletion(int eventId, DateTime date, {required bool completed}) async {
+    await setEventCompletion(eventId, date, completed);
+    final linkedIds = await getLinkedHabitIds(eventId);
+    for (final habitId in linkedIds) {
+      await setHabitCompletionWithEffects(habitId, date, completed);
+    }
+    AppEvents.notifyDataChanged();
   }
 }

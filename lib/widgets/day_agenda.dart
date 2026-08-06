@@ -5,6 +5,7 @@ import '../models/calendar_event.dart';
 import '../constants/categories.dart';
 import '../utils/date_utils.dart';
 import '../utils/calendar_zoom.dart';
+import '../utils/app_events.dart';
 import 'event_dialog.dart';
 
 const double kHourLabelWidth = 42.0;
@@ -42,6 +43,7 @@ class _DayAgendaState extends State<DayAgenda> {
     super.initState();
     _load();
     CalendarZoom.hourHeight.addListener(_onZoomChanged);
+    AppEvents.tick.addListener(_onExternalChange);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_isToday && _scrollController.hasClients) {
         final hour = DateTime.now().hour;
@@ -57,6 +59,14 @@ class _DayAgendaState extends State<DayAgenda> {
     if (mounted) setState(() {});
   }
 
+  // Cuando algo cambia en cualquier otra pantalla (por ejemplo, marcas un
+  // hábito como completado desde la pestaña de Hábitos y ese hábito está
+  // vinculado a un evento de hoy), este widget recarga solo, al instante,
+  // sin que el usuario tenga que salir y volver a entrar.
+  void _onExternalChange() {
+    if (mounted) _load();
+  }
+
   @override
   void didUpdateWidget(covariant DayAgenda oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -68,6 +78,7 @@ class _DayAgendaState extends State<DayAgenda> {
     _scrollController.dispose();
     _nowTimer?.cancel();
     CalendarZoom.hourHeight.removeListener(_onZoomChanged);
+    AppEvents.tick.removeListener(_onExternalChange);
     super.dispose();
   }
 
@@ -106,11 +117,9 @@ class _DayAgendaState extends State<DayAgenda> {
   Future<void> _toggleComplete(CalendarEvent event) async {
     if (!_isToday || event.id == null) return;
     final current = _completion[event.id] ?? false;
-    final newValue = !current;
-    await _dbHelper.setEventCompletion(event.id!, widget.date, newValue);
-    if (event.linkedHabitId != null) {
-      await _dbHelper.setHabitCompletionWithEffects(event.linkedHabitId!, widget.date, newValue);
-    }
+    // Un solo método aplica el cambio al evento Y a todos los hábitos/tareas
+    // vinculados (puede haber varios) en la misma operación, al instante.
+    await _dbHelper.toggleEventCompletion(event.id!, widget.date, completed: !current);
     _load();
     widget.onChanged?.call();
   }
@@ -184,9 +193,12 @@ class _DayAgendaState extends State<DayAgenda> {
   }
 
   // Contenido del bloque de evento, adaptado según el alto disponible para
-  // que NUNCA se desborde (evita el error "BOTTOM OVERFLOWED"). Al alejar
-  // el zoom, primero se oculta la hora, luego el ícono, y en bloques muy
-  // chicos se oculta hasta el título, dejando solo el color.
+  // que NUNCA se desborde. Al alejar el zoom, primero se oculta la hora,
+  // luego el ícono, luego el título por completo (dejando solo el color),
+  // y además todo el bloque va envuelto en un OverflowBox/ClipRect (ver
+  // más abajo) como red de seguridad final: pase lo que pase con el
+  // contenido, JAMÁS puede pintar fuera de su propio bloque ni disparar el
+  // aviso de "BOTTOM OVERFLOWED".
   Widget _buildEventContent({
     required BuildContext context,
     required CalendarEvent event,
@@ -197,15 +209,15 @@ class _DayAgendaState extends State<DayAgenda> {
   }) {
     final catData = kCategories[event.category] ?? kCategories['general']!;
 
-    if (height < 14) {
-      // Demasiado chico: solo la barra de color, sin texto.
+    if (height < 16) {
+      // Demasiado chico: solo la barra de color, sin texto ni ícono.
       return const SizedBox.shrink();
     }
 
-    final showIcon = height >= 26;
-    final showSubtitle = height >= 44;
-    final showCheck = height >= 22;
-    final titleFontSize = height < 22 ? 10.0 : 12.0;
+    final showIcon = height >= 30;
+    final showSubtitle = height >= 46;
+    final showCheck = height >= 24;
+    final titleFontSize = height < 24 ? 10.0 : 12.0;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,6 +245,7 @@ class _DayAgendaState extends State<DayAgenda> {
                         fontSize: titleFontSize,
                         fontWeight: FontWeight.w600,
                         decoration: completed ? TextDecoration.lineThrough : null,
+                        height: 1.0,
                       ),
                     ),
                   ),
@@ -240,7 +253,7 @@ class _DayAgendaState extends State<DayAgenda> {
               ),
               if (showSubtitle)
                 Text(event.startTime + (event.endTime != null ? ' - ${event.endTime}' : ''),
-                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 10)),
+                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 10, height: 1.0)),
             ],
           ),
         ),
@@ -338,13 +351,24 @@ class _DayAgendaState extends State<DayAgenda> {
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(color: color.withOpacity(0.6)),
                                   ),
-                                  child: _buildEventContent(
-                                    context: context,
-                                    event: event,
-                                    height: height,
-                                    color: color,
-                                    completed: completed,
-                                    theme: theme,
+                                  // Red de seguridad final anti-overflow: ClipRect recorta
+                                  // cualquier pixel que se salga y OverflowBox le permite al
+                                  // contenido pedir el alto que quiera sin que Flutter dispare
+                                  // el aviso rojo/negro de "BOTTOM OVERFLOWED".
+                                  child: ClipRect(
+                                    child: OverflowBox(
+                                      alignment: Alignment.topLeft,
+                                      minHeight: 0,
+                                      maxHeight: double.infinity,
+                                      child: _buildEventContent(
+                                        context: context,
+                                        event: event,
+                                        height: height,
+                                        color: color,
+                                        completed: completed,
+                                        theme: theme,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),

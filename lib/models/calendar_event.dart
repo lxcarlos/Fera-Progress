@@ -4,13 +4,15 @@ class CalendarEvent {
   final String? description;
   final String startTime; // "HH:mm"
   final String? endTime; // "HH:mm"
-  final DateTime date; // fecha ancla
-  final String recurrence; // none, daily, weekly, monthly
+  final DateTime date; // fecha ancla (la primera ocurrencia)
+  final String recurrence; // 'none' | 'weekly'
+  final List<int> weekdays; // 1=lunes ... 7=domingo (solo si recurrence == weekly)
+  final DateTime? repeatUntil; // null = se repite para siempre
   final String category;
-  final int? linkedHabitId;
+  final List<int> linkedHabitIds; // hábitos y/o tareas vinculados (0, 1 o varios)
   final DateTime createdAt;
 
-  CalendarEvent({
+  const CalendarEvent({
     this.id,
     required this.title,
     this.description,
@@ -18,10 +20,14 @@ class CalendarEvent {
     this.endTime,
     required this.date,
     this.recurrence = 'none',
+    this.weekdays = const [],
+    this.repeatUntil,
     this.category = 'general',
-    this.linkedHabitId,
+    this.linkedHabitIds = const [],
     required this.createdAt,
   });
+
+  bool get isRecurring => recurrence == 'weekly' && weekdays.isNotEmpty;
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -31,8 +37,9 @@ class CalendarEvent {
         'endTime': endTime,
         'date': date.toIso8601String(),
         'recurrence': recurrence,
+        'weekdays': weekdays.isEmpty ? null : weekdays.join(','),
+        'repeatUntil': repeatUntil?.toIso8601String(),
         'category': category,
-        'linkedHabitId': linkedHabitId,
         'createdAt': createdAt.toIso8601String(),
       };
 
@@ -44,8 +51,11 @@ class CalendarEvent {
         endTime: map['endTime'],
         date: DateTime.parse(map['date']),
         recurrence: map['recurrence'] ?? 'none',
+        weekdays: (map['weekdays'] as String?)?.isNotEmpty == true
+            ? (map['weekdays'] as String).split(',').map((s) => int.parse(s)).toList()
+            : const [],
+        repeatUntil: map['repeatUntil'] != null ? DateTime.parse(map['repeatUntil']) : null,
         category: map['category'] ?? 'general',
-        linkedHabitId: map['linkedHabitId'],
         createdAt: DateTime.parse(map['createdAt']),
       );
 
@@ -55,9 +65,12 @@ class CalendarEvent {
     String? startTime,
     String? endTime,
     String? recurrence,
+    List<int>? weekdays,
+    DateTime? repeatUntil,
     String? category,
-    int? linkedHabitId,
-    bool clearLink = false,
+    List<int>? linkedHabitIds,
+    DateTime? date,
+    bool clearRepeatUntil = false,
   }) =>
       CalendarEvent(
         id: id,
@@ -65,10 +78,12 @@ class CalendarEvent {
         description: description ?? this.description,
         startTime: startTime ?? this.startTime,
         endTime: endTime ?? this.endTime,
-        date: date,
+        date: date ?? this.date,
         recurrence: recurrence ?? this.recurrence,
+        weekdays: weekdays ?? this.weekdays,
+        repeatUntil: clearRepeatUntil ? null : (repeatUntil ?? this.repeatUntil),
         category: category ?? this.category,
-        linkedHabitId: clearLink ? null : (linkedHabitId ?? this.linkedHabitId),
+        linkedHabitIds: linkedHabitIds ?? this.linkedHabitIds,
         createdAt: createdAt,
       );
 }

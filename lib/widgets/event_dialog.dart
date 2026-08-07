@@ -74,6 +74,9 @@ class _WeekdaySelector extends StatelessWidget {
 /// Pregunta cómo eliminar un evento repetido: solo esta ocurrencia, o esta
 /// y todas las siguientes (las anteriores a la fecha actual no se tocan).
 /// Devuelve 'one', 'forward' o null (canceló).
+
+
+
 Future<String?> _askDeleteScope(BuildContext context, {required bool isRecurring}) {
   if (!isRecurring) {
     return showDialog<String>(
@@ -101,18 +104,10 @@ Future<String?> _askDeleteScope(BuildContext context, {required bool isRecurring
         'Este evento se repite. Elige qué quieres eliminar. Esta acción no se puede deshacer.',
         style: TextStyle(fontSize: 13),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-        TextButton(
-          onPressed: () => Navigator.pop(context, 'one'),
-          child: const Text('Solo este', style: TextStyle(color: Colors.red)),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: Colors.red),
-          onPressed: () => Navigator.pop(context, 'forward'),
-          child: const Text('Este y siguientes'),
-        ),
-      ],
+      // Un solo widget en "actions": GlassDialog lo estira a todo el
+      // ancho y así los 3 botones quedan centrados, de corrido, en una
+      // sola línea.
+      actions: [_scopeButtonsRow(context, deleteMode: true)],
     ),
   );
 }
@@ -129,20 +124,53 @@ Future<String?> _askEditScope(BuildContext context) {
         'Este evento se repite. Elige si el cambio aplica solo a este día o a este y todos los que siguen.',
         style: TextStyle(fontSize: 13),
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-        TextButton(
-          onPressed: () => Navigator.pop(context, 'one'),
-          child: const Text('Solo este'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, 'forward'),
-          child: const Text('Este y siguientes'),
-        ),
-      ],
+      actions: [_scopeButtonsRow(context, deleteMode: false)],
     ),
   );
 }
+
+/// Fila de "Cancelar" / "Solo este" / "Este y siguientes" para los diálogos
+/// de eliminar o editar un evento repetido. Va centrada y de corrido en una
+/// sola línea: cada botón usa el mismo ancho (Expanded) y el texto se
+/// achica solo (FittedBox) si el celular es angosto, en vez de desbordar
+/// o saltar a una segunda fila.
+Widget _scopeButtonsRow(BuildContext context, {required bool deleteMode}) {
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Expanded(
+        child: TextButton(
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12)),
+          onPressed: () => Navigator.pop(context),
+          child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Cancelar')),
+        ),
+      ),
+      Expanded(
+        child: TextButton(
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12)),
+          onPressed: () => Navigator.pop(context, 'one'),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text('Solo este', style: TextStyle(color: deleteMode ? Colors.red : null)),
+          ),
+        ),
+      ),
+      Expanded(
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: deleteMode ? Colors.red : null,
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 12),
+          ),
+          onPressed: () => Navigator.pop(context, 'forward'),
+          child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Este y siguientes')),
+        ),
+      ),
+    ],
+  );
+}
+
+
+
 
 /// Suma minutos a una hora "HH:mm" (usado para calcular una hora de fin
 /// por defecto cuando el usuario no eligió una).
@@ -242,8 +270,11 @@ Future<void> showEventDialog(
               Row(
                 children: [
                   Expanded(child: Text('Inicio: ${startTime.format(context)}')),
+                  
+                  
                   TextButton(
                     onPressed: () async {
+                      FocusScope.of(context).unfocus();
                       final t = await showTimePicker(context: context, initialTime: startTime);
                       if (t != null) setDialogState(() => startTime = t);
                     },
@@ -256,11 +287,15 @@ Future<void> showEventDialog(
                   Expanded(child: Text(endTime == null ? 'Sin hora de fin' : 'Fin: ${endTime!.format(context)}')),
                   TextButton(
                     onPressed: () async {
+                      FocusScope.of(context).unfocus();
                       final t = await showTimePicker(context: context, initialTime: endTime ?? startTime);
                       if (t != null) setDialogState(() => endTime = t);
                     },
                     child: const Text('Elegir'),
                   ),
+
+
+
                   if (endTime != null)
                     IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDialogState(() => endTime = null)),
                 ],
@@ -354,8 +389,18 @@ Future<void> showEventDialog(
                             : 'Repetir hasta: ${repeatUntil!.day}/${repeatUntil!.month}/${repeatUntil!.year}',
                       ),
                     ),
+                    
+                    
+
+
+
+
+
+                    
+
                     TextButton(
                       onPressed: () async {
+                        FocusScope.of(context).unfocus();
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: repeatUntil ?? date.add(const Duration(days: 30)),
@@ -366,6 +411,16 @@ Future<void> showEventDialog(
                       },
                       child: const Text('Elegir'),
                     ),
+
+
+
+
+
+
+
+
+
+
                     if (repeatUntil != null)
                       IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDialogState(() => repeatUntil = null)),
                   ],

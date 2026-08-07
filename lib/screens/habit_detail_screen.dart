@@ -104,13 +104,26 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
                     ),
                   ),
+                 
+
+
                   TextButton(
                     onPressed: () async {
+                      FocusScope.of(context).unfocus();
                       final t = await showTimePicker(context: context, initialTime: _timeLimit ?? TimeOfDay.now());
                       if (t != null) setState(() => _timeLimit = t);
                     },
                     child: const Text('Elegir'),
                   ),
+
+
+
+
+
+
+
+
+
                   if (_timeLimit != null)
                     IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _timeLimit = null)),
                 ],
@@ -123,8 +136,14 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                       style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
                     ),
                   ),
+                  
+                  
+
+
+
                   TextButton(
                     onPressed: () async {
+                      FocusScope.of(context).unfocus();
                       final d = await showDatePicker(
                         context: context,
                         initialDate: _dueDate ?? DateTime.now(),
@@ -135,6 +154,12 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                     },
                     child: const Text('Elegir'),
                   ),
+
+
+
+
+
+                  
                   if (_dueDate != null)
                     IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setState(() => _dueDate = null)),
                 ],

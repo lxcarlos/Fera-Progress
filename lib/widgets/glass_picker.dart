@@ -275,10 +275,19 @@ class GlassPickerField<T> extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final accent = valueColor ?? theme.colorScheme.onSurface;
 
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        // Si había un campo de texto con el teclado abierto, le quitamos
+        // el foco ANTES de abrir el selector. Si no hacemos esto, al
+        // cerrar el selector Flutter le devuelve el foco a ese campo y el
+        // teclado se vuelve a abrir solo, sin que el usuario lo pida.
+        FocusScope.of(context).unfocus();
+        onTap();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+
         decoration: BoxDecoration(
           color: isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04),
           borderRadius: BorderRadius.circular(14),

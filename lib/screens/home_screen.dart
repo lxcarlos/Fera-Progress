@@ -276,13 +276,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 Row(
                   children: [
                     Expanded(child: Text(selectedTime == null ? 'Sin hora límite' : 'Hora: ${selectedTime!.format(context)}')),
-                    TextButton(
+                   
+                   
+                   
+                   
+                   TextButton(
                       onPressed: () async {
+                        FocusScope.of(context).unfocus();
                         final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
                         if (time != null) setDialogState(() => selectedTime = time);
                       },
                       child: const Text('Elegir hora'),
                     ),
+
+
+
+
+
                   ],
                 ),
                 Row(
@@ -292,8 +302,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? 'Sin fecha límite'
                           : 'Fecha: ${selectedDueDate!.day}/${selectedDueDate!.month}/${selectedDueDate!.year}'),
                     ),
-                    TextButton(
+                   
+
+                   TextButton(
                       onPressed: () async {
+                        FocusScope.of(context).unfocus();
                         final date = await showDatePicker(
                           context: context,
                           initialDate: DateTime.now(),
@@ -304,6 +317,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       child: const Text('Elegir fecha'),
                     ),
+
+
                   ],
                 ),
                 if (isTask)
@@ -554,16 +569,27 @@ class _HomeScreenState extends State<HomeScreen> {
           body: Container(
             decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient)),
             child: SafeArea(
+              
+
+
+
+              
               child: Column(
                 children: [
-                  _LevelHeader(
-                    level: _level,
-                    totalPoints: _totalPoints,
-                    pointsToNextLevel: _pointsToNextLevel,
-                    streakInfo: _streakInfo,
-                  ),
-                  const SizedBox(height: 6),
+                  // Se quitó el rectángulo de "racha + puntos" que iba
+                  // hasta arriba. Como el AppBar es transparente y el
+                  // body pasa por detrás (extendBodyBehindAppBar), dejamos
+                  // este espacio para que la barra de fecha no quede
+                  // tapada por el AppBar.
+                  const SizedBox(height: kToolbarHeight + 10),
                   _DateNav(date: _selectedDate, isToday: _isToday, onChange: _changeDate),
+
+
+
+
+
+
+
                   const SizedBox(height: 4),
                   _FilterRow(
                     typeFilter: _typeFilter,
@@ -746,73 +772,7 @@ class _FilterRow extends StatelessWidget {
   }
 }
 
-class _LevelHeader extends StatelessWidget {
-  final int level;
-  final int totalPoints;
-  final int pointsToNextLevel;
-  final StreakInfo streakInfo;
 
-  const _LevelHeader({
-    required this.level,
-    required this.totalPoints,
-    required this.pointsToNextLevel,
-    required this.streakInfo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final hasCurrentStreak = streakInfo.current > 0;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(kCardRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: hasCurrentStreak
-                  ? Colors.orange.withOpacity(isDark ? 0.10 : 0.08)
-                  : (isDark ? Colors.white.withOpacity(0.06) : Colors.black.withOpacity(0.04)),
-              borderRadius: BorderRadius.circular(kCardRadius),
-              border: Border.all(
-                color: hasCurrentStreak ? Colors.orange.withOpacity(0.3) : (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08)),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // La "Última racha: X días" que vivía aquí se quitó; la
-                // bolita de % ahora está en el AppBar, junto al título.
-                if (hasCurrentStreak)
-                  Row(
-                    children: [
-                      const PulseFireIcon(size: 18),
-                      const SizedBox(width: 4),
-                      Text('${streakInfo.current}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w700)),
-                    ],
-                  )
-                else
-                  const SizedBox.shrink(),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
-                  child: Text(
-                    '$totalPoints pts',
-                    key: ValueKey(totalPoints),
-                    style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _GlassCard extends StatelessWidget {
   final Habit habit;

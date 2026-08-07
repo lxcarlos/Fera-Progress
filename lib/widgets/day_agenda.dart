@@ -383,10 +383,15 @@ class _DayAgendaState extends State<DayAgenda> {
                                 final top = isDragging && _dragCurrentTop != null ? _dragCurrentTop! : baseTop;
 
                                 // Reparte el ancho disponible entre las columnas del
-                                // grupo de eventos que se solapan en este horario.
+                                // grupo de eventos que se solapan en este horario. Cada
+                                // evento puede ocupar más de una columna (columnSpan) si
+                                // a su derecha hay espacio libre, para que encajen sin
+                                // dejar huecos, como piezas de lego.
                                 const hGap = 3.0;
-                                final slotWidth = (areaWidth - 8 - hGap * (pos.columnCount - 1)) / pos.columnCount;
-                                final left = 4 + pos.column * (slotWidth + hGap);
+                                final colWidth = (areaWidth - 8 - hGap * (pos.columnCount - 1)) / pos.columnCount;
+                                final slotWidth = colWidth * pos.columnSpan + hGap * (pos.columnSpan - 1);
+                                final left = 4 + pos.column * (colWidth + hGap);
+
 
                                 return Positioned(
                                   top: top,

@@ -50,16 +50,25 @@ class GlassDialog extends StatelessWidget {
                 if (title != null) const SizedBox(height: 16),
                 Flexible(child: SingleChildScrollView(child: content)),
                 const SizedBox(height: 8),
-                // Wrap en vez de Row: si los botones no caben en una sola
-                // línea (p. ej. "Eliminar" + "Cancelar" + "Este y
-                // siguientes"), pasan a una segunda línea en lugar de
-                // desbordar el ancho del diálogo ("RIGHT OVERFLOWED").
-                Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: actions,
-                ),
+                // Si mandan un solo widget como "actions" (por ejemplo, una
+                // Row con varios botones ya armada), lo dejamos ocupar todo
+                // el ancho del diálogo en vez de meterlo en el Wrap
+                // alineado a la derecha. Así los botones de "¿Eliminar
+                // evento repetido?" quedan centrados y de corrido en una
+                // sola línea, en vez de que el último se vaya a una
+                // segunda fila.
+                if (actions.length == 1)
+                  SizedBox(width: double.infinity, child: actions.first)
+                else
+                  // Wrap en vez de Row: si los botones sueltos no caben en
+                  // una sola línea, pasan a una segunda en vez de
+                  // desbordar el ancho del diálogo ("RIGHT OVERFLOWED").
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: actions,
+                  ),
               ],
             ),
           ),

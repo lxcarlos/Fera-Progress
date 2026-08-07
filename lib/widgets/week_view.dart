@@ -393,11 +393,17 @@ class _WeekViewState extends State<WeekView> {
                                       final isDragging = _draggingEventId == event.id && _draggingDay != null && isSameDate(_draggingDay!, day);
                                       final top = isDragging && _dragCurrentTop != null ? _dragCurrentTop! : baseTop;
 
+                                      
                                       // Reparte el ancho de la columna del día entre los
-                                      // eventos que se solapan en este horario.
+                                      // eventos que se solapan en este horario. Cada evento
+                                      // puede ocupar más de una columna (columnSpan) si a su
+                                      // derecha hay espacio libre real.
                                       const hGap = 2.0;
-                                      final slotWidth = (dayColumnWidth - 4 - hGap * (pos.columnCount - 1)) / pos.columnCount;
-                                      final left = 2 + pos.column * (slotWidth + hGap);
+                                      final colWidth = (dayColumnWidth - 4 - hGap * (pos.columnCount - 1)) / pos.columnCount;
+                                      final slotWidth = colWidth * pos.columnSpan + hGap * (pos.columnSpan - 1);
+                                      final left = 2 + pos.column * (colWidth + hGap);
+
+                                      
 
                                       return Positioned(
                                         top: top,

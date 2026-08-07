@@ -595,6 +595,145 @@ class DBHelper {
     AppEvents.notifyDataChanged();
   }
 
+  /// Actualiza SOLO la ocurrencia de [occurrenceDate] de un evento repetido:
+  /// agrega una excepción en la fecha original (para que ese día ya no
+  /// muestre la versión vieja) y crea un evento nuevo e independiente, sin
+  /// repetición, con los datos editados. Si el evento no se repite, esto
+  /// equivale a un update normal.
+  Future<void> updateEventOccurrence(
+    CalendarEvent original,
+    CalendarEvent updated,
+    DateTime occurrenceDate, {
+    List<int>? linkedHabitIds,
+  }) async {
+    if (!original.isRecurring || original.id == null) {
+      await updateEvent(updated, linkedHabitIds: linkedHabitIds);
+      return;
+    }
+    final db = await database;
+    final dateStr = DateTime(occurrenceDate.year, occurrenceDate.month, occurrenceDate.day).toIso8601String().split('T')[0];
+    await db.insert('event_exceptions', {'eventId': original.id, 'date': dateStr});
+
+    final oneOff = CalendarEvent(
+      title: updated.title,
+      description: updated.description,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
+      date: occurrenceDate,
+      recurrence: 'none',
+      weekdays: const [],
+      repeatUntil: null,
+      category: updated.category,
+      createdAt: DateTime.now(),
+    );
+    final links = linkedHabitIds ?? await getLinkedHabitIds(original.id!);
+    await createEvent(oneOff, linkedHabitIds: links);
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Actualiza esta ocurrencia y todas las que siguen de un evento
+  /// repetido, dejando intactas las anteriores a [occurrenceDate]: corta
+  /// la serie original justo antes de esa fecha y crea una serie nueva a
+  /// partir de ahí con los datos editados.
+  Future<void> updateEventFromDateOnward(
+    CalendarEvent original,
+    CalendarEvent updated,
+    DateTime occurrenceDate, {
+    List<int>? linkedHabitIds,
+  }) async {
+    final db = await database;
+    if (original.id == null) return;
+    final anchor = DateTime(original.date.year, original.date.month, original.date.day);
+    final target = DateTime(occurrenceDate.year, occurrenceDate.month, occurrenceDate.day);
+
+    if (!original.isRecurring || !target.isAfter(anchor)) {
+      // No hay ocurrencias anteriores que conservar: se reemplaza todo el evento.
+      await updateEvent(updated.copyWith(date: original.date), linkedHabitIds: linkedHabitIds);
+      return;
+    }
+
+    final dayBefore = target.subtract(const Duration(days: 1));
+    final cappedOriginal = original.copyWith(repeatUntil: dayBefore);
+    await db.update('calendar_events', cappedOriginal.toMap(), where: 'id = ?', whereArgs: [original.id]);
+
+    final newSeries = CalendarEvent(
+      title: updated.title,
+      description: updated.description,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
+      date: occurrenceDate,
+      recurrence: updated.recurrence,
+      weekdays: updated.weekdays,
+      repeatUntil: updated.repeatUntil,
+      category: updated.category,
+      createdAt: DateTime.now(),
+    );
+    final links = linkedHabitIds ?? await getLinkedHabitIds(original.id!);
+    await createEvent(newSeries, linkedHabitIds: links);
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Mueve SOLO la ocurrencia de [date] de un evento a un nuevo horario
+  /// (se usa al arrastrar un evento en Día/Semana). Igual que al editar
+  /// "solo este", si el evento se repite se crea una excepción en la
+  /// fecha vieja y un evento suelto en el nuevo horario; si no se repite,
+  /// se mueve el evento tal cual.
+  Future<void> moveEventOccurrence(CalendarEvent event, DateTime date, String newStartTime, String newEndTime) async {
+    if (event.id == null) return;
+    if (!event.isRecurring) {
+      final updated = event.copyWith(startTime: newStartTime, endTime: newEndTime);
+      await updateEvent(updated);
+      return;
+    }
+    final db = await database;
+    final dateStr = DateTime(date.year, date.month, date.day).toIso8601String().split('T')[0];
+    await db.insert('event_exceptions', {'eventId': event.id, 'date': dateStr});
+
+    final moved = CalendarEvent(
+      title: event.title,
+      description: event.description,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      date: date,
+      recurrence: 'none',
+      weekdays: const [],
+      repeatUntil: null,
+      category: event.category,
+      createdAt: DateTime.now(),
+    );
+    final links = await getLinkedHabitIds(event.id!);
+    await createEvent(moved, linkedHabitIds: links);
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Cuenta cuántos eventos de [date] se solapan en el tiempo con el rango
+  /// [startTime]-[endTime] (sin contar al propio evento si se está
+  /// editando uno existente). Se usa para avisar cuando ya hay 3 eventos
+  /// encimados y no cabe un cuarto en la cuadrícula de Día/Semana.
+  Future<int> countOverlappingEvents(
+    DateTime date,
+    String startTime,
+    String endTime, {
+    int? excludeEventId,
+  }) async {
+    final events = await getEventsForDate(date);
+    int toMinutes(String hhmm) {
+      final p = hhmm.split(':');
+      return int.parse(p[0]) * 60 + int.parse(p[1]);
+    }
+
+    final s1 = toMinutes(startTime);
+    final e1 = toMinutes(endTime);
+    int count = 0;
+    for (final e in events) {
+      if (excludeEventId != null && e.id == excludeEventId) continue;
+      final s2 = toMinutes(e.startTime);
+      final e2 = e.endTime != null ? toMinutes(e.endTime!) : s2 + 30;
+      if (s1 < e2 && s2 < e1) count++;
+    }
+    return count;
+  }
+
   Future<List<CalendarEvent>> getAllEvents() async {
     final db = await database;
     final result = await db.query('calendar_events');

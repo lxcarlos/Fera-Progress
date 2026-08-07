@@ -6,9 +6,15 @@ import '../constants/categories.dart';
 import '../utils/date_utils.dart';
 import '../utils/calendar_zoom.dart';
 import '../utils/app_events.dart';
+import '../utils/event_layout.dart';
 import 'event_dialog.dart';
 
 const double kHourLabelWidth = 42.0;
+
+// Cuadrícula de arrastre: al mover un evento con el dedo, su nueva hora
+// siempre se ajusta a este número de minutos (15) para que quede en punto,
+// y media hora, y cuarto — nunca "al minuto" exacto.
+const int kDragSnapMinutes = 15;
 
 class DayAgenda extends StatefulWidget {
   final DateTime date;
@@ -35,6 +41,13 @@ class _DayAgendaState extends State<DayAgenda> {
   double? _pinchStartHourHeight;
   double? _pinchFocalScreenY;
   double? _pinchStartScrollOffset;
+
+  // ---- Arrastrar (mantener pulsado) para mover un evento de horario ----
+  int? _draggingEventId;
+  double? _dragOrigTop;
+  double? _dragStartGlobalY;
+  double? _dragCurrentTop;
+  int? _dragSnappedStartMin;
 
   bool get _isToday => isSameDate(widget.date, DateTime.now());
 
@@ -98,6 +111,32 @@ class _DayAgendaState extends State<DayAgenda> {
   int _minutesFromMidnight(String hhmm) {
     final parts = hhmm.split(':');
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
+
+  String _formatMinutes(int totalMin) {
+    final h = (totalMin ~/ 60).clamp(0, 23);
+    final m = totalMin % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  void _showHiddenOverlapNotice(int hiddenCount) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          hiddenCount == 1
+              ? 'Hay 1 evento más en este horario que no se puede mostrar. Agrégalo en la descripción de uno de los eventos.'
+              : 'Hay $hiddenCount eventos más en este horario que no se pueden mostrar. Agrégalos en la descripción de uno de los eventos.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _moveEvent(CalendarEvent event, int newStartMin, int durationMin) async {
+    final newStart = _formatMinutes(newStartMin);
+    final newEnd = _formatMinutes(newStartMin + durationMin);
+    await _dbHelper.moveEventOccurrence(event, widget.date, newStart, newEnd);
+    _load();
+    widget.onChanged?.call();
   }
 
   Future<void> _openEventDialog({CalendarEvent? existing, TimeOfDay? presetTime}) async {
@@ -309,72 +348,149 @@ class _DayAgendaState extends State<DayAgenda> {
                   Expanded(
                     child: SizedBox(
                       height: totalHeight,
-                      child: Stack(
-                        children: [
-                          Column(
-                            children: List.generate(
-                              24,
-                              (h) => GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => _openEventDialog(presetTime: TimeOfDay(hour: h, minute: 0)),
-                                child: Container(
-                                  height: _hourHeight,
-                                  decoration: BoxDecoration(
-                                    border: Border(top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06))),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          ..._events.map((event) {
-                            final startMin = _minutesFromMidnight(event.startTime);
-                            final endMin = event.endTime != null ? _minutesFromMidnight(event.endTime!) : startMin + 30;
-                            final top = startMin / 60 * _hourHeight;
-                            final durationMin = (endMin - startMin).clamp(20, 24 * 60);
-                            final height = durationMin / 60 * _hourHeight;
-                            final color = categoryAccent(context, event.category);
-                            final completed = _completion[event.id] ?? false;
-                            final vPad = height < 26 ? 1.0 : 4.0;
-
-                            return Positioned(
-                              top: top,
-                              left: 4,
-                              right: 4,
-                              height: height,
-                              child: GestureDetector(
-                                onTap: () => _openEventDialog(existing: event),
-                                child: Container(
-                                  clipBehavior: Clip.hardEdge,
-                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: vPad),
-                                  decoration: BoxDecoration(
-                                    color: color.withOpacity(completed ? 0.12 : 0.22),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: color.withOpacity(0.6)),
-                                  ),
-                                  // Red de seguridad final anti-overflow: ClipRect recorta
-                                  // cualquier pixel que se salga y OverflowBox le permite al
-                                  // contenido pedir el alto que quiera sin que Flutter dispare
-                                  // el aviso rojo/negro de "BOTTOM OVERFLOWED".
-                                  child: ClipRect(
-                                    child: OverflowBox(
-                                      alignment: Alignment.topLeft,
-                                      minHeight: 0,
-                                      maxHeight: double.infinity,
-                                      child: _buildEventContent(
-                                        context: context,
-                                        event: event,
-                                        height: height,
-                                        color: color,
-                                        completed: completed,
-                                        theme: theme,
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final areaWidth = constraints.maxWidth;
+                          return Stack(
+                            children: [
+                              Column(
+                                children: List.generate(
+                                  24,
+                                  (h) => GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => _openEventDialog(presetTime: TimeOfDay(hour: h, minute: 0)),
+                                    child: Container(
+                                      height: _hourHeight,
+                                      decoration: BoxDecoration(
+                                        border: Border(top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06))),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            );
-                          }),
-                        ],
+                              ...layoutEvents(_events).map((pos) {
+                                final event = pos.event;
+                                final startMin = _minutesFromMidnight(event.startTime);
+                                final endMin = event.endTime != null ? _minutesFromMidnight(event.endTime!) : startMin + 30;
+                                final durationMin = (endMin - startMin).clamp(20, 24 * 60).toInt();
+                                final baseTop = startMin / 60 * _hourHeight;
+                                final height = durationMin / 60 * _hourHeight;
+                                final color = categoryAccent(context, event.category);
+                                final completed = _completion[event.id] ?? false;
+                                final vPad = height < 26 ? 1.0 : 4.0;
+
+                                final isDragging = _draggingEventId == event.id;
+                                final top = isDragging && _dragCurrentTop != null ? _dragCurrentTop! : baseTop;
+
+                                // Reparte el ancho disponible entre las columnas del
+                                // grupo de eventos que se solapan en este horario.
+                                const hGap = 3.0;
+                                final slotWidth = (areaWidth - 8 - hGap * (pos.columnCount - 1)) / pos.columnCount;
+                                final left = 4 + pos.column * (slotWidth + hGap);
+
+                                return Positioned(
+                                  top: top,
+                                  left: left,
+                                  width: slotWidth,
+                                  height: height,
+                                  child: GestureDetector(
+                                    onTap: () => _openEventDialog(existing: event),
+                                    // Mantener pulsado para mover el evento: la hora de
+                                    // inicio y fin se recalculan al soltar, siempre
+                                    // ajustadas a bloques de 15 minutos.
+                                    onLongPressStart: (details) {
+                                      setState(() {
+                                        _draggingEventId = event.id;
+                                        _dragOrigTop = baseTop;
+                                        _dragStartGlobalY = details.globalPosition.dy;
+                                        _dragCurrentTop = baseTop;
+                                        _dragSnappedStartMin = startMin;
+                                      });
+                                    },
+                                    onLongPressMoveUpdate: (details) {
+                                      if (_draggingEventId != event.id || _dragOrigTop == null || _dragStartGlobalY == null) return;
+                                      final deltaY = details.globalPosition.dy - _dragStartGlobalY!;
+                                      final rawTop = _dragOrigTop! + deltaY;
+                                      final rawMinutes = rawTop / _hourHeight * 60;
+                                      var snappedMin = (rawMinutes / kDragSnapMinutes).round() * kDragSnapMinutes;
+                                      final maxStart = 24 * 60 - durationMin;
+                                      snappedMin = snappedMin.clamp(0, maxStart < 0 ? 0 : maxStart).toInt();
+                                      setState(() {
+                                        _dragSnappedStartMin = snappedMin;
+                                        _dragCurrentTop = snappedMin / 60 * _hourHeight;
+                                      });
+                                    },
+                                    onLongPressEnd: (details) {
+                                      final snapped = _dragSnappedStartMin;
+                                      final wasDraggingThis = _draggingEventId == event.id;
+                                      setState(() {
+                                        _draggingEventId = null;
+                                        _dragOrigTop = null;
+                                        _dragStartGlobalY = null;
+                                        _dragCurrentTop = null;
+                                        _dragSnappedStartMin = null;
+                                      });
+                                      if (wasDraggingThis && snapped != null && snapped != startMin) {
+                                        _moveEvent(event, snapped, durationMin);
+                                      }
+                                    },
+                                    child: Container(
+                                      clipBehavior: Clip.hardEdge,
+                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: vPad),
+                                      decoration: BoxDecoration(
+                                        color: color.withOpacity(completed ? 0.12 : (isDragging ? 0.34 : 0.22)),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: color.withOpacity(isDragging ? 0.9 : 0.6), width: isDragging ? 2 : 1),
+                                        boxShadow: isDragging
+                                            ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 3))]
+                                            : null,
+                                      ),
+                                      // Red de seguridad final anti-overflow: ClipRect recorta
+                                      // cualquier pixel que se salga y OverflowBox le permite al
+                                      // contenido pedir el alto que quiera sin que Flutter dispare
+                                      // el aviso rojo/negro de "BOTTOM OVERFLOWED".
+                                      child: ClipRect(
+                                        child: OverflowBox(
+                                          alignment: Alignment.topLeft,
+                                          minHeight: 0,
+                                          maxHeight: double.infinity,
+                                          child: Stack(
+                                            children: [
+                                              _buildEventContent(
+                                                context: context,
+                                                event: event,
+                                                height: height,
+                                                color: color,
+                                                completed: completed,
+                                                theme: theme,
+                                              ),
+                                              // Aviso de que hay más eventos en este mismo
+                                              // horario de los que caben (más de 3): se
+                                              // recomienda ponerlos en la descripción.
+                                              if (pos.hiddenCount > 0)
+                                                Positioned(
+                                                  top: 0,
+                                                  right: 0,
+                                                  child: GestureDetector(
+                                                    onTap: () => _showHiddenOverlapNotice(pos.hiddenCount),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(6)),
+                                                      child: Text('+${pos.hiddenCount}', style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700)),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ),

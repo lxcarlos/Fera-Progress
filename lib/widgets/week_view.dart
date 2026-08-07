@@ -6,9 +6,14 @@ import '../constants/categories.dart';
 import '../utils/date_utils.dart';
 import '../utils/calendar_zoom.dart';
 import '../utils/app_events.dart';
+import '../utils/event_layout.dart';
 import 'event_dialog.dart';
 
 const double kWeekHourLabelWidth = 32.0;
+
+// Igual que en Día: al arrastrar un evento, su nueva hora siempre se
+// ajusta a bloques de 15 minutos (nunca al minuto exacto).
+const int kWeekDragSnapMinutes = 15;
 
 const List<String> kWeekdayShort = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
@@ -45,6 +50,14 @@ class _WeekViewState extends State<WeekView> {
   double? _pinchStartHourHeight;
   double? _pinchFocalScreenY;
   double? _pinchStartScrollOffset;
+
+  // ---- Arrastrar (mantener pulsado) para mover un evento de horario ----
+  int? _draggingEventId;
+  double? _dragOrigTop;
+  double? _dragStartGlobalY;
+  double? _dragCurrentTop;
+  int? _dragSnappedStartMin;
+  DateTime? _draggingDay;
 
   @override
   void initState() {
@@ -118,6 +131,32 @@ class _WeekViewState extends State<WeekView> {
   int _minutesFromMidnight(String hhmm) {
     final parts = hhmm.split(':');
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+  }
+
+  String _formatMinutes(int totalMin) {
+    final h = (totalMin ~/ 60).clamp(0, 23);
+    final m = totalMin % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+  }
+
+  void _showHiddenOverlapNotice(int hiddenCount) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          hiddenCount == 1
+              ? 'Hay 1 evento más en este horario que no se puede mostrar. Agrégalo en la descripción de uno de los eventos.'
+              : 'Hay $hiddenCount eventos más en este horario que no se pueden mostrar. Agrégalos en la descripción de uno de los eventos.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _moveEvent(CalendarEvent event, DateTime day, int newStartMin, int durationMin) async {
+    final newStart = _formatMinutes(newStartMin);
+    final newEnd = _formatMinutes(newStartMin + durationMin);
+    await _dbHelper.moveEventOccurrence(event, day, newStart, newEnd);
+    _load();
+    widget.onChanged?.call();
   }
 
   Future<void> _openDialog(DateTime day, {CalendarEvent? existing, TimeOfDay? presetTime}) async {
@@ -339,31 +378,85 @@ class _WeekViewState extends State<WeekView> {
                                         ),
                                       ),
                                     ),
-                                    ...events.map((event) {
+                                    ...layoutEvents(events).map((pos) {
+                                      final event = pos.event;
                                       final startMin = _minutesFromMidnight(event.startTime);
                                       final endMin = event.endTime != null ? _minutesFromMidnight(event.endTime!) : startMin + 30;
-                                      final top = startMin / 60 * hourHeight;
-                                      final durationMin = (endMin - startMin).clamp(20, 24 * 60);
+                                      final durationMin = (endMin - startMin).clamp(20, 24 * 60).toInt();
+                                      final baseTop = startMin / 60 * hourHeight;
                                       final height = durationMin / 60 * hourHeight;
                                       final color = categoryAccent(context, event.category);
                                       final completed = _completionByKey['${event.id}_${_dateKey(day)}'] ?? false;
                                       final isToday = isSameDate(day, today);
                                       final vPad = height < 20 ? 0.5 : 2.0;
 
+                                      final isDragging = _draggingEventId == event.id && _draggingDay != null && isSameDate(_draggingDay!, day);
+                                      final top = isDragging && _dragCurrentTop != null ? _dragCurrentTop! : baseTop;
+
+                                      // Reparte el ancho de la columna del día entre los
+                                      // eventos que se solapan en este horario.
+                                      const hGap = 2.0;
+                                      final slotWidth = (dayColumnWidth - 4 - hGap * (pos.columnCount - 1)) / pos.columnCount;
+                                      final left = 2 + pos.column * (slotWidth + hGap);
+
                                       return Positioned(
                                         top: top,
-                                        left: 2,
-                                        right: 2,
+                                        left: left,
+                                        width: slotWidth,
                                         height: height,
                                         child: GestureDetector(
                                           onTap: () => _openDialog(day, existing: event),
+                                          // Mantener pulsado para mover el evento; la hora
+                                          // nueva siempre se ajusta a bloques de 15 minutos.
+                                          onLongPressStart: (details) {
+                                            setState(() {
+                                              _draggingEventId = event.id;
+                                              _draggingDay = day;
+                                              _dragOrigTop = baseTop;
+                                              _dragStartGlobalY = details.globalPosition.dy;
+                                              _dragCurrentTop = baseTop;
+                                              _dragSnappedStartMin = startMin;
+                                            });
+                                          },
+                                          onLongPressMoveUpdate: (details) {
+                                            if (_draggingEventId != event.id || _dragOrigTop == null || _dragStartGlobalY == null) return;
+                                            final deltaY = details.globalPosition.dy - _dragStartGlobalY!;
+                                            final rawTop = _dragOrigTop! + deltaY;
+                                            final rawMinutes = rawTop / hourHeight * 60;
+                                            var snappedMin = (rawMinutes / kWeekDragSnapMinutes).round() * kWeekDragSnapMinutes;
+                                            final maxStart = 24 * 60 - durationMin;
+                                            snappedMin = snappedMin.clamp(0, maxStart < 0 ? 0 : maxStart).toInt();
+                                            setState(() {
+                                              _dragSnappedStartMin = snappedMin;
+                                              _dragCurrentTop = snappedMin / 60 * hourHeight;
+                                            });
+                                          },
+                                          onLongPressEnd: (details) {
+                                            final snapped = _dragSnappedStartMin;
+                                            final wasDraggingThis = _draggingEventId == event.id;
+                                            final dayToMove = _draggingDay;
+                                            setState(() {
+                                              _draggingEventId = null;
+                                              _draggingDay = null;
+                                              _dragOrigTop = null;
+                                              _dragStartGlobalY = null;
+                                              _dragCurrentTop = null;
+                                              _dragSnappedStartMin = null;
+                                            });
+                                            if (wasDraggingThis && dayToMove != null && snapped != null && snapped != startMin) {
+                                              _moveEvent(event, dayToMove, snapped, durationMin);
+                                            }
+                                          },
                                           child: Container(
                                             clipBehavior: Clip.hardEdge,
                                             padding: EdgeInsets.symmetric(horizontal: 4, vertical: vPad),
                                             decoration: BoxDecoration(
-                                              color: color.withOpacity(completed ? 0.14 : 0.24),
+                                              color: color.withOpacity(completed ? 0.14 : (isDragging ? 0.36 : 0.24)),
                                               borderRadius: BorderRadius.circular(6),
-                                              border: Border.all(color: color.withOpacity(0.6)),
+                                              border: Border.all(color: color.withOpacity(isDragging ? 0.9 : 0.6), width: isDragging ? 2 : 1),
+                                              boxShadow: isDragging
+                                                  ? [BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 2))]
+                                                  : null,
                                             ),
                                             // Misma red de seguridad anti-overflow que en Día.
                                             child: ClipRect(
@@ -371,14 +464,33 @@ class _WeekViewState extends State<WeekView> {
                                                 alignment: Alignment.topLeft,
                                                 minHeight: 0,
                                                 maxHeight: double.infinity,
-                                                child: _buildEventContent(
-                                                  event: event,
-                                                  height: height,
-                                                  color: color,
-                                                  completed: completed,
-                                                  isToday: isToday,
-                                                  theme: theme,
-                                                  onToggle: () => _toggleComplete(event, day),
+                                                child: Stack(
+                                                  children: [
+                                                    _buildEventContent(
+                                                      event: event,
+                                                      height: height,
+                                                      color: color,
+                                                      completed: completed,
+                                                      isToday: isToday,
+                                                      theme: theme,
+                                                      onToggle: () => _toggleComplete(event, day),
+                                                    ),
+                                                    // Aviso de que hay más eventos en este
+                                                    // horario de los que caben (más de 3).
+                                                    if (pos.hiddenCount > 0)
+                                                      Positioned(
+                                                        top: 0,
+                                                        right: 0,
+                                                        child: GestureDetector(
+                                                          onTap: () => _showHiddenOverlapNotice(pos.hiddenCount),
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(5)),
+                                                            child: Text('+${pos.hiddenCount}', style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.w700)),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                  ],
                                                 ),
                                               ),
                                             ),

@@ -528,7 +528,25 @@ class _HomeScreenState extends State<HomeScreen> {
         Scaffold(
           extendBodyBehindAppBar: true,
           appBar: AppBar(
-            title: const Text('Desarrollo personal', style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 1.1)),
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Desarrollo personal', style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 1.1, fontSize: 17)),
+                const SizedBox(width: 10),
+                // Bolita de % de hábitos cumplidos hoy: antes vivía en la
+                // tarjeta de racha, ahora queda junto al título y, del otro
+                // lado, junto al rayito de "Actividad extra".
+                DayPercentRing(
+                  percent: _todayHabitPercent,
+                  hasData: _todayHasHabits,
+                  size: 26,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => CalendarStatsScreen(selectedDay: DateTime.now())),
+                  ).then((_) => _loadAll()),
+                ),
+              ],
+            ),
             actions: [
               if (_isToday) IconButton(icon: const Icon(Icons.bolt), tooltip: 'Actividad extra', onPressed: _addExtraActivity),
             ],
@@ -543,12 +561,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     totalPoints: _totalPoints,
                     pointsToNextLevel: _pointsToNextLevel,
                     streakInfo: _streakInfo,
-                    todayPercent: _todayHabitPercent,
-                    todayHasHabits: _todayHasHabits,
-                    onTapPercent: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => CalendarStatsScreen(selectedDay: DateTime.now())),
-                    ).then((_) => _loadAll()),
                   ),
                   const SizedBox(height: 6),
                   _DateNav(date: _selectedDate, isToday: _isToday, onChange: _changeDate),
@@ -739,18 +751,12 @@ class _LevelHeader extends StatelessWidget {
   final int totalPoints;
   final int pointsToNextLevel;
   final StreakInfo streakInfo;
-  final double todayPercent;
-  final bool todayHasHabits;
-  final VoidCallback? onTapPercent;
 
   const _LevelHeader({
     required this.level,
     required this.totalPoints,
     required this.pointsToNextLevel,
     required this.streakInfo,
-    this.todayPercent = 0,
-    this.todayHasHabits = false,
-    this.onTapPercent,
   });
 
   @override
@@ -779,22 +785,18 @@ class _LevelHeader extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    if (hasCurrentStreak) ...[
+                // La "Última racha: X días" que vivía aquí se quitó; la
+                // bolita de % ahora está en el AppBar, junto al título.
+                if (hasCurrentStreak)
+                  Row(
+                    children: [
                       const PulseFireIcon(size: 18),
                       const SizedBox(width: 4),
                       Text('${streakInfo.current}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.w700)),
-                    ] else if (streakInfo.last > 0)
-                      Text('Última racha: ${streakInfo.last} días', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
-                    const SizedBox(width: 10),
-                    DayPercentRing(
-                      percent: todayPercent,
-                      hasData: todayHasHabits,
-                      onTap: onTapPercent,
-                    ),
-                  ],
-                ),
+                    ],
+                  )
+                else
+                  const SizedBox.shrink(),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
                   child: Text(

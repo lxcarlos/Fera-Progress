@@ -117,6 +117,75 @@ Future<String?> _askDeleteScope(BuildContext context, {required bool isRecurring
   );
 }
 
+/// Pregunta cómo aplicar los cambios de un evento repetido: solo esta
+/// ocurrencia, o esta y todas las siguientes. Devuelve 'one', 'forward' o
+/// null (canceló, y en ese caso NO se guarda nada).
+Future<String?> _askEditScope(BuildContext context) {
+  return showDialog<String>(
+    context: context,
+    builder: (context) => GlassDialog(
+      title: const Text('¿Cómo guardar los cambios?'),
+      content: const Text(
+        'Este evento se repite. Elige si el cambio aplica solo a este día o a este y todos los que siguen.',
+        style: TextStyle(fontSize: 13),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'one'),
+          child: const Text('Solo este'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, 'forward'),
+          child: const Text('Este y siguientes'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Suma minutos a una hora "HH:mm" (usado para calcular una hora de fin
+/// por defecto cuando el usuario no eligió una).
+String _addMinutes(String hhmm, int minutes) {
+  final parts = hhmm.split(':');
+  final total = int.parse(parts[0]) * 60 + int.parse(parts[1]) + minutes;
+  final h = (total ~/ 60) % 24;
+  final m = total % 60;
+  return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+}
+
+/// Si ya hay 3 o más eventos encimados en ese horario, avisa que no es
+/// posible mostrar un cuarto y sugiere agregar la actividad en la
+/// descripción de uno de los eventos existentes. Devuelve true si se
+/// puede continuar guardando (menos de 3 eventos en el mismo horario).
+Future<bool> _confirmOverlapIfNeeded(
+  BuildContext context,
+  DBHelper dbHelper,
+  DateTime date,
+  String startTime,
+  String endTime, {
+  int? excludeEventId,
+}) async {
+  final overlapping = await dbHelper.countOverlappingEvents(date, startTime, endTime, excludeEventId: excludeEventId);
+  if (overlapping < 3) return true;
+  if (!context.mounted) return false;
+  await showDialog(
+    context: context,
+    builder: (context) => GlassDialog(
+      title: const Text('Demasiados eventos a la misma hora'),
+      content: const Text(
+        'Ya hay 3 eventos en este horario y no se pueden mostrar más al mismo tiempo en el calendario. '
+        'Agrega esta actividad dentro de la descripción de uno de los eventos existentes, en vez de crear uno nuevo.',
+        style: TextStyle(fontSize: 13),
+      ),
+      actions: [
+        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido')),
+      ],
+    ),
+  );
+  return false;
+}
+
 /// Abre el formulario de creación/edición de un evento de calendario.
 /// Compartido entre la vista de Día y la vista de Semana para no duplicar código.
 Future<void> showEventDialog(
@@ -326,6 +395,17 @@ Future<void> showEventDialog(
                 if (titleController.text.trim().isEmpty) return;
                 final startStr = '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}';
                 final endStr = endTime != null ? '${endTime!.hour.toString().padLeft(2, '0')}:${endTime!.minute.toString().padLeft(2, '0')}' : null;
+                final effectiveEndForOverlap = endStr ?? _addMinutes(startStr, 30);
+
+                final canProceed = await _confirmOverlapIfNeeded(
+                  context,
+                  dbHelper,
+                  date,
+                  startStr,
+                  effectiveEndForOverlap,
+                  excludeEventId: existing?.id,
+                );
+                if (!canProceed || !context.mounted) return;
 
                 String finalCategory = category;
                 if (linkedHabitIds.isNotEmpty) {
@@ -361,7 +441,21 @@ Future<void> showEventDialog(
                     clearRepeatUntil: effectiveRecurrence != 'weekly' || repeatUntil == null,
                     category: finalCategory,
                   );
-                  await dbHelper.updateEvent(updated, linkedHabitIds: linkedHabitIds);
+
+                  // Igual que al eliminar: si el evento se repite, se
+                  // pregunta si el cambio aplica solo a este día o a este
+                  // y todos los que siguen.
+                  if (existing.isRecurring) {
+                    final scope = await _askEditScope(context);
+                    if (scope == null || !context.mounted) return;
+                    if (scope == 'one') {
+                      await dbHelper.updateEventOccurrence(existing, updated, date, linkedHabitIds: linkedHabitIds);
+                    } else {
+                      await dbHelper.updateEventFromDateOnward(existing, updated, date, linkedHabitIds: linkedHabitIds);
+                    }
+                  } else {
+                    await dbHelper.updateEvent(updated, linkedHabitIds: linkedHabitIds);
+                  }
                 }
                 if (context.mounted) Navigator.pop(context);
                 onSaved();

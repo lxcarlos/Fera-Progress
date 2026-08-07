@@ -540,9 +540,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Stack(
       children: [
-        Scaffold(
-          extendBodyBehindAppBar: true,
+       
+       Scaffold(
           appBar: AppBar(
+
+
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -574,14 +576,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
               
+              
               child: Column(
                 children: [
                   // Se quitó el rectángulo de "racha + puntos" que iba
-                  // hasta arriba. Como el AppBar es transparente y el
-                  // body pasa por detrás (extendBodyBehindAppBar), dejamos
-                  // este espacio para que la barra de fecha no quede
-                  // tapada por el AppBar.
-                  const SizedBox(height: kToolbarHeight + 10),
+                  // hasta arriba. El Scaffold ya reserva el alto del
+                  // AppBar automáticamente (sin extendBodyBehindAppBar),
+                  // así que la fecha empieza pegada, sin espacio negro
+                  // de más ni quedar tapada.
+                  const SizedBox(height: 6),
                   _DateNav(date: _selectedDate, isToday: _isToday, onChange: _changeDate),
 
 

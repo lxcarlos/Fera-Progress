@@ -9,7 +9,6 @@ import '../constants/color_palette.dart';
 import 'glass_dialog.dart';
 import 'glass_picker.dart';
 
-
 // Orden L M X J V S D, con el valor real de DateTime.weekday (1=lunes..7=domingo).
 const List<Map<String, dynamic>> _kWeekdayOptions = [
   {'value': 1, 'label': 'L'},
@@ -78,9 +77,6 @@ class _WeekdaySelector extends StatelessWidget {
 /// Pregunta cómo eliminar un evento repetido: solo esta ocurrencia, o esta
 /// y todas las siguientes (las anteriores a la fecha actual no se tocan).
 /// Devuelve 'one', 'forward' o null (canceló).
-
-
-
 Future<String?> _askDeleteScope(BuildContext context, {required bool isRecurring}) {
   if (!isRecurring) {
     return showDialog<String>(
@@ -173,9 +169,6 @@ Widget _scopeButtonsRow(BuildContext context, {required bool deleteMode}) {
   );
 }
 
-
-
-
 /// Suma minutos a una hora "HH:mm" (usado para calcular una hora de fin
 /// por defecto cuando el usuario no eligió una).
 String _addMinutes(String hhmm, int minutes) {
@@ -244,6 +237,12 @@ Future<void> showEventDialog(
   List<int> weekdays = List<int>.from(existing?.weekdays ?? const []);
   DateTime? repeatUntil = existing?.repeatUntil;
   List<int> linkedHabitIds = List<int>.from(existing?.linkedHabitIds ?? const []);
+  // IMPORTANTE: esta variable va AQUÍ AFUERA del builder de abajo, no
+  // adentro. Si estuviera adentro del StatefulBuilder, cada vez que se
+  // llama setDialogState (por ejemplo al elegir un color) el builder se
+  // vuelve a ejecutar completo desde el inicio y la línea la resetearía a
+  // null de nuevo, borrando el color justo después de elegirlo.
+  String? eventColor = existing?.color;
 
   await showDialog(
     context: context,
@@ -261,7 +260,6 @@ Future<void> showEventDialog(
           linkLabel = '${linkedHabits.length} vinculados';
         }
 
-        String? eventColor;
         return GlassDialog(
           title: Text(existing == null ? 'Nuevo evento' : 'Editar evento'),
           content: Column(
@@ -275,8 +273,6 @@ Future<void> showEventDialog(
               Row(
                 children: [
                   Expanded(child: Text('Inicio: ${startTime.format(context)}')),
-                  
-                  
                   TextButton(
                     onPressed: () async {
                       FocusScope.of(context).unfocus();
@@ -298,9 +294,6 @@ Future<void> showEventDialog(
                     },
                     child: const Text('Elegir'),
                   ),
-
-
-
                   if (endTime != null)
                     IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDialogState(() => endTime = null)),
                 ],
@@ -323,19 +316,6 @@ Future<void> showEventDialog(
               ),
               if (linkedHabitIds.isEmpty) ...[
                 const SizedBox(height: 10),
-                
-                
-
-
-
-
-
-
-
-
-
-
-                
                 GlassPickerField<String>(
                   label: 'Categoría',
                   valueLabel: (kCategories[category] ?? kCategories['general']!)['label'] as String,
@@ -364,10 +344,6 @@ Future<void> showEventDialog(
                   fallbackColor: categoryAccent(context, category),
                   onChanged: (c) => setDialogState(() => eventColor = c),
                 ),
-
-
-
-
               ],
               const SizedBox(height: 10),
               GlassPickerField<String>(
@@ -417,15 +393,6 @@ Future<void> showEventDialog(
                             : 'Repetir hasta: ${repeatUntil!.day}/${repeatUntil!.month}/${repeatUntil!.year}',
                       ),
                     ),
-                    
-                    
-
-
-
-
-
-                    
-
                     TextButton(
                       onPressed: () async {
                         FocusScope.of(context).unfocus();
@@ -439,16 +406,6 @@ Future<void> showEventDialog(
                       },
                       child: const Text('Elegir'),
                     ),
-
-
-
-
-
-
-
-
-
-
                     if (repeatUntil != null)
                       IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () => setDialogState(() => repeatUntil = null)),
                   ],
@@ -510,7 +467,6 @@ Future<void> showEventDialog(
                     repeatUntil: effectiveRecurrence == 'weekly' ? repeatUntil : null,
                     category: finalCategory,
                     color: eventColor,
-                    
                     createdAt: DateTime.now(),
                   );
                   await dbHelper.createEvent(event, linkedHabitIds: linkedHabitIds);
@@ -525,6 +481,7 @@ Future<void> showEventDialog(
                     repeatUntil: effectiveRecurrence == 'weekly' ? repeatUntil : null,
                     clearRepeatUntil: effectiveRecurrence != 'weekly' || repeatUntil == null,
                     category: finalCategory,
+                    color: eventColor,
                   );
 
                   // Igual que al eliminar: si el evento se repite, se

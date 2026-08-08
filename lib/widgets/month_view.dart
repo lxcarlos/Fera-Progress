@@ -212,7 +212,8 @@ class _MonthViewState extends State<MonthView> {
           )
         else
           ...selectedEvents.map((e) {
-            final color = categoryAccent(context, e.category);
+            
+            final color = resolveColor(context, color: e.color, category: e.category);
             final catData = kCategories[e.category] ?? kCategories['general']!;
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

@@ -375,7 +375,7 @@ class _DayAgendaState extends State<DayAgenda> {
                                 final durationMin = (endMin - startMin).clamp(20, 24 * 60).toInt();
                                 final baseTop = startMin / 60 * _hourHeight;
                                 final height = durationMin / 60 * _hourHeight;
-                                final color = categoryAccent(context, event.category);
+                                final color = resolveColor(context, color: event.color, category: event.category);
                                 final completed = _completion[event.id] ?? false;
                                 final vPad = height < 26 ? 1.0 : 4.0;
 

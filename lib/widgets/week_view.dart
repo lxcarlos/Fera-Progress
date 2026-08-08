@@ -385,7 +385,8 @@ class _WeekViewState extends State<WeekView> {
                                       final durationMin = (endMin - startMin).clamp(20, 24 * 60).toInt();
                                       final baseTop = startMin / 60 * hourHeight;
                                       final height = durationMin / 60 * hourHeight;
-                                      final color = categoryAccent(context, event.category);
+                                      
+                                      final color = resolveColor(context, color: event.color, category: event.category);
                                       final completed = _completionByKey['${event.id}_${_dateKey(day)}'] ?? false;
                                       final isToday = isSameDate(day, today);
                                       final vPad = height < 20 ? 0.5 : 2.0;

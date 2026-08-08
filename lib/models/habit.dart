@@ -12,6 +12,7 @@ class Habit {
   final String category;
   final int currentStreak;
   final int bestStreak;
+  final String? color; // hex elegido por el usuario, ej "#F87171". null = usa el color de la categoría.
 
   Habit({
     this.id,
@@ -27,6 +28,7 @@ class Habit {
     this.category = 'general',
     this.currentStreak = 0,
     this.bestStreak = 0,
+    this.color,
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +46,7 @@ class Habit {
       'category': category,
       'currentStreak': currentStreak,
       'bestStreak': bestStreak,
+      'color': color,
     };
   }
 
@@ -62,6 +65,7 @@ class Habit {
       category: map['category'] ?? 'general',
       currentStreak: map['currentStreak'] ?? 0,
       bestStreak: map['bestStreak'] ?? 0,
+      color: map['color'],
     );
   }
 
@@ -78,6 +82,8 @@ class Habit {
     int? bestStreak,
     bool clearTimeLimit = false,
     bool clearDueDate = false,
+    String? color,
+    bool clearColor = false,
   }) {
     return Habit(
       id: id,
@@ -93,6 +99,7 @@ class Habit {
       category: category ?? this.category,
       currentStreak: currentStreak ?? this.currentStreak,
       bestStreak: bestStreak ?? this.bestStreak,
+      color: clearColor ? null : (color ?? this.color),
     );
   }
 }

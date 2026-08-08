@@ -11,6 +11,7 @@ class CalendarEvent {
   final String category;
   final List<int> linkedHabitIds; // hábitos y/o tareas vinculados (0, 1 o varios)
   final DateTime createdAt;
+  final String? color; // hex elegido por el usuario, ej "#60A5FA". null = usa el color de la categoría.
 
   const CalendarEvent({
     this.id,
@@ -25,6 +26,7 @@ class CalendarEvent {
     this.category = 'general',
     this.linkedHabitIds = const [],
     required this.createdAt,
+    this.color,
   });
 
   bool get isRecurring => recurrence == 'weekly' && weekdays.isNotEmpty;
@@ -41,6 +43,7 @@ class CalendarEvent {
         'repeatUntil': repeatUntil?.toIso8601String(),
         'category': category,
         'createdAt': createdAt.toIso8601String(),
+        'color': color,
       };
 
   factory CalendarEvent.fromMap(Map<String, dynamic> map) => CalendarEvent(
@@ -57,6 +60,7 @@ class CalendarEvent {
         repeatUntil: map['repeatUntil'] != null ? DateTime.parse(map['repeatUntil']) : null,
         category: map['category'] ?? 'general',
         createdAt: DateTime.parse(map['createdAt']),
+        color: map['color'],
       );
 
   CalendarEvent copyWith({
@@ -71,6 +75,8 @@ class CalendarEvent {
     List<int>? linkedHabitIds,
     DateTime? date,
     bool clearRepeatUntil = false,
+    String? color,
+    bool clearColor = false,
   }) =>
       CalendarEvent(
         id: id,
@@ -85,5 +91,6 @@ class CalendarEvent {
         category: category ?? this.category,
         linkedHabitIds: linkedHabitIds ?? this.linkedHabitIds,
         createdAt: createdAt,
+        color: clearColor ? null : (color ?? this.color),
       );
 }

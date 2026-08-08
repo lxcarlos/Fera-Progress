@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/color_utils.dart';
+import 'color_palette.dart';
 
 const Map<String, Map<String, dynamic>> kCategories = {
   'general': {'label': 'General', 'icon': Icons.circle, 'color': Color(0xFF4ADE80)},
@@ -17,4 +18,15 @@ Color categoryAccent(BuildContext context, String categoryKey) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   final base = (kCategories[categoryKey] ?? kCategories['general']!)['color'] as Color;
   return contrastColor(base, isDark);
+}
+
+/// Color final a usar para pintar un hábito/tarea/evento/actividad extra:
+/// si el usuario eligió un color propio (desde el selector estilo Google
+/// Calendar) se usa ese; si no, se cae al color de su categoría, como antes.
+Color resolveColor(BuildContext context, {String? color, required String category}) {
+  if (color != null && color.isNotEmpty) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return contrastColor(hexToColor(color), isDark);
+  }
+  return categoryAccent(context, category);
 }

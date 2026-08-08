@@ -22,7 +22,7 @@ class DBHelper {
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'feraprogress.db');
-    return await openDatabase(path, version: 7, onCreate: _createDB, onUpgrade: _upgradeDB);
+    return await openDatabase(path, version: 8, onCreate: _createDB, onUpgrade: _upgradeDB);
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -40,7 +40,8 @@ class DBHelper {
         createdAt TEXT NOT NULL,
         category TEXT NOT NULL DEFAULT 'general',
         currentStreak INTEGER NOT NULL DEFAULT 0,
-        bestStreak INTEGER NOT NULL DEFAULT 0
+        bestStreak INTEGER NOT NULL DEFAULT 0,
+        color TEXT
       )
     ''');
 
@@ -61,7 +62,8 @@ class DBHelper {
         description TEXT NOT NULL,
         points INTEGER NOT NULL,
         category TEXT NOT NULL DEFAULT 'general',
-        date TEXT NOT NULL
+        date TEXT NOT NULL,
+        color TEXT
       )
     ''');
 
@@ -77,7 +79,8 @@ class DBHelper {
         weekdays TEXT,
         repeatUntil TEXT,
         category TEXT NOT NULL DEFAULT 'general',
-        createdAt TEXT NOT NULL
+        createdAt TEXT NOT NULL,
+        color TEXT
       )
     ''');
 
@@ -161,6 +164,14 @@ class DBHelper {
         )
       ''');
     }
+
+    if (oldVersion < 8) {
+      await db.execute("ALTER TABLE habits ADD COLUMN color TEXT");
+      await db.execute("ALTER TABLE calendar_events ADD COLUMN color TEXT");
+      await db.execute("ALTER TABLE extra_activities ADD COLUMN color TEXT");
+    }
+    
+
     if (oldVersion < 7) {
       // Nuevas columnas para repetición semanal por día y fecha límite.
       await db.execute("ALTER TABLE calendar_events ADD COLUMN weekdays TEXT");
@@ -422,13 +433,14 @@ class DBHelper {
     return (result.first['total'] as int?) ?? 0;
   }
 
-  Future<int> createExtraActivity({required String description, required int points, required String category}) async {
+  Future<int> createExtraActivity({required String description, required int points, required String category, String? color}) async {
     final db = await database;
     final id = await db.insert('extra_activities', {
       'description': description,
       'points': points,
       'category': category,
       'date': DateTime.now().toIso8601String(),
+      'color': color,
     });
     AppEvents.notifyDataChanged();
     return id;

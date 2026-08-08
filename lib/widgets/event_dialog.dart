@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/calendar_event.dart';
 import '../models/habit.dart';
+
 import '../constants/categories.dart';
+import '../constants/color_palette.dart';
+
 import 'glass_dialog.dart';
 import 'glass_picker.dart';
+
 
 // Orden L M X J V S D, con el valor real de DateTime.weekday (1=lunes..7=domingo).
 const List<Map<String, dynamic>> _kWeekdayOptions = [
@@ -257,6 +261,7 @@ Future<void> showEventDialog(
           linkLabel = '${linkedHabits.length} vinculados';
         }
 
+        String? eventColor;
         return GlassDialog(
           title: Text(existing == null ? 'Nuevo evento' : 'Editar evento'),
           content: Column(
@@ -318,6 +323,19 @@ Future<void> showEventDialog(
               ),
               if (linkedHabitIds.isEmpty) ...[
                 const SizedBox(height: 10),
+                
+                
+
+
+
+
+
+
+
+
+
+
+                
                 GlassPickerField<String>(
                   label: 'Categoría',
                   valueLabel: (kCategories[category] ?? kCategories['general']!)['label'] as String,
@@ -340,6 +358,16 @@ Future<void> showEventDialog(
                     if (result != null) setDialogState(() => category = result);
                   },
                 ),
+                const SizedBox(height: 10),
+                ColorPickerField(
+                  selectedColor: eventColor,
+                  fallbackColor: categoryAccent(context, category),
+                  onChanged: (c) => setDialogState(() => eventColor = c),
+                ),
+
+
+
+
               ],
               const SizedBox(height: 10),
               GlassPickerField<String>(
@@ -481,6 +509,8 @@ Future<void> showEventDialog(
                     weekdays: effectiveRecurrence == 'weekly' ? weekdays : const [],
                     repeatUntil: effectiveRecurrence == 'weekly' ? repeatUntil : null,
                     category: finalCategory,
+                    color: eventColor,
+                    
                     createdAt: DateTime.now(),
                   );
                   await dbHelper.createEvent(event, linkedHabitIds: linkedHabitIds);

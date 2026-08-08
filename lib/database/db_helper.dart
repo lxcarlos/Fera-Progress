@@ -314,11 +314,25 @@ class DBHelper {
     return await db.query('habit_records', where: 'habitId = ?', whereArgs: [habitId], orderBy: 'date DESC');
   }
 
+  
   Future<Set<String>> getCompletedDates() async {
     final db = await database;
     final result = await db.query('habit_records', where: 'completed = 1', columns: ['date']);
     return result.map((r) => r['date'] as String).toSet();
   }
+
+  /// Cuántos hábitos se completaron cada día de un año dado. Es la base
+  /// del heatmap estilo GitHub: cada día es un cuadrito, y entre más
+  /// hábitos completados ese día, más oscuro/intenso se pinta.
+  Future<Map<String, int>> getCompletionCountsByYear(int year) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      "SELECT date, COUNT(*) as cnt FROM habit_records WHERE completed = 1 AND date LIKE ? GROUP BY date",
+      ['$year-%'],
+    );
+    return {for (final r in result) r['date'] as String: r['cnt'] as int};
+  }
+  
 
   Future<Set<String>> getCompletedDatesForHabit(int habitId) async {
     final db = await database;

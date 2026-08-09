@@ -1,9 +1,44 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
+import '../services/notification_service.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  int _minutesBefore = 15;
+  bool _loadingNotif = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifPref();
+  }
+
+  Future<void> _loadNotifPref() async {
+    final value = await NotificationService().getMinutesBefore();
+    if (!mounted) return;
+    setState(() {
+      _minutesBefore = value;
+      _loadingNotif = false;
+    });
+  }
+
+  Future<void> _setMinutes(int minutes) async {
+    setState(() => _minutesBefore = minutes);
+    await NotificationService().setMinutesBefore(minutes);
+  }
+
+  String _labelFor(int minutes) {
+    if (minutes < 0) return 'Desactivadas';
+    if (minutes == 0) return 'Al momento';
+    return '$minutes min antes';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +84,33 @@ class SettingsScreen extends StatelessWidget {
               );
             }).toList(),
           ),
+          const SizedBox(height: 28),
+          const Text('Notificaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            'Avisa antes de que se cumpla el límite de un hábito con hora.',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          if (_loadingNotif)
+            const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+          else
+            Column(
+              children: kNotificationOffsetOptions.map((minutes) {
+                final selected = _minutesBefore == minutes;
+                return RadioListTile<int>(
+                  value: minutes,
+                  groupValue: _minutesBefore,
+                  onChanged: (v) => _setMinutes(v!),
+                  title: Text(_labelFor(minutes)),
+                  secondary: Icon(
+                    minutes < 0 ? Icons.notifications_off_outlined : Icons.notifications_active_outlined,
+                    color: selected ? Theme.of(context).colorScheme.primary : null,
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                );
+              }).toList(),
+            ),
         ],
       ),
     );

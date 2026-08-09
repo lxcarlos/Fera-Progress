@@ -227,9 +227,11 @@ class _WeekViewState extends State<WeekView> {
   // el texto, y además va envuelto en OverflowBox/ClipRect como red de
   // seguridad final (ver build) para que NUNCA aparezca el aviso de
   // "BOTTOM OVERFLOWED", sin importar cuántos eventos choquen entre sí.
+  
   Widget _buildEventContent({
     required CalendarEvent event,
     required double height,
+    required double width,
     required Color color,
     required bool completed,
     required bool isToday,
@@ -238,8 +240,16 @@ class _WeekViewState extends State<WeekView> {
   }) {
     if (height < 13) return const SizedBox.shrink();
 
-    final showCheck = height >= 28;
+    // El icono de check tiene ancho FIJO (a diferencia del texto, que se
+    // recorta con "..."), así que si el evento queda muy angosto (3
+    // eventos encimados a la misma hora en Semana), mejor ni intentar
+    // meterlo: eso era justo lo que causaba el "RenderFlex overflowed by
+    // X pixels" cuando el icono + el texto ya no cabían.
+    final showCheck = height >= 28 && width >= 26;
     final fontSize = height < 20 ? 8.0 : 9.0;
+
+
+
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -472,16 +482,22 @@ class _WeekViewState extends State<WeekView> {
                                                 minHeight: 0,
                                                 maxHeight: double.infinity,
                                                 child: Stack(
+
+
+                                                  
                                                   children: [
                                                     _buildEventContent(
                                                       event: event,
                                                       height: height,
+                                                      width: slotWidth,
                                                       color: color,
                                                       completed: completed,
                                                       isToday: isToday,
                                                       theme: theme,
                                                       onToggle: () => _toggleComplete(event, day),
                                                     ),
+
+
                                                     // Aviso de que hay más eventos en este
                                                     // horario de los que caben (más de 3).
                                                     if (pos.hiddenCount > 0)

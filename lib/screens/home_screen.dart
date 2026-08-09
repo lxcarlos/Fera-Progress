@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../database/db_helper.dart';
 import '../constants/categories.dart';
+import '../widgets/glass_picker.dart';
 import '../constants/design_tokens.dart';
 import '../utils/color_utils.dart';
 import '../utils/date_utils.dart';
@@ -704,6 +705,11 @@ class _DateNav extends StatelessWidget {
   }
 }
 
+
+
+
+
+
 class _FilterRow extends StatelessWidget {
   final TypeFilter typeFilter;
   final String? categoryFilter;
@@ -747,6 +753,12 @@ class _FilterRow extends StatelessWidget {
       );
     }
 
+    // En vez de 7 circulitos de categoría sueltos, un solo botón que
+    // abre el selector (mismo estilo que "Categoría" en el diálogo de
+    // eventos). Menos ruido visual, misma función.
+    final selectedCategoryData = categoryFilter != null ? kCategories[categoryFilter] : null;
+    final categoryColor = categoryFilter != null ? categoryAccent(context, categoryFilter!) : theme.colorScheme.onSurface.withOpacity(0.4);
+
     return SizedBox(
       height: 40,
       child: ListView(
@@ -760,20 +772,71 @@ class _FilterRow extends StatelessWidget {
                 onTap: () => onTypeChanged(e.key),
               )),
           Container(width: 1, height: 24, color: theme.colorScheme.onSurface.withOpacity(0.1), margin: const EdgeInsets.symmetric(horizontal: 4)),
-          ...kCategories.entries.where((e) => e.key != 'general').map((e) {
-            final color = categoryAccent(context, e.key);
-            return iconChip(
-              selected: categoryFilter == e.key,
-              icon: e.value['icon'] as IconData,
-              color: color,
-              onTap: () => onCategoryChanged(categoryFilter == e.key ? null : e.key),
-            );
-          }),
+          GestureDetector(
+            onTap: () async {
+              final result = await showGlassPicker<String?>(
+                context,
+                title: 'Filtrar por categoría',
+                selected: categoryFilter,
+                options: [
+                  const GlassPickerOption<String?>(value: null, label: 'Todas las categorías', icon: Icons.apps),
+                  ...kCategories.entries.where((e) => e.key != 'general').map(
+                        (e) => GlassPickerOption<String?>(
+                          value: e.key,
+                          label: e.value['label'] as String,
+                          icon: e.value['icon'] as IconData,
+                          color: categoryAccent(context, e.key),
+                        ),
+                      ),
+                ],
+              );
+              // showGlassPicker devuelve null tanto si eligió "Todas" como
+              // si cerró sin elegir nada; por eso el picker en sí ya
+              // resuelve ambos casos igual (mostrar todo), no hace falta
+              // distinguirlos aquí.
+              onCategoryChanged(result);
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                color: categoryFilter != null
+                    ? categoryColor.withOpacity(0.18)
+                    : (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03)),
+                border: Border.all(color: categoryFilter != null ? categoryColor : Colors.transparent, width: 1.2),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    selectedCategoryData != null ? selectedCategoryData['icon'] as IconData : Icons.category_outlined,
+                    size: 15,
+                    color: categoryColor,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    selectedCategoryData != null ? selectedCategoryData['label'] as String : 'Categoría',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: categoryColor),
+                  ),
+                  Icon(Icons.expand_more, size: 15, color: categoryColor),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
+
+
+
+
+
+
+
+
 
 
 

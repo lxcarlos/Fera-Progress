@@ -24,10 +24,7 @@ class _YearViewState extends State<YearView> {
   Map<String, int> _completionCounts = {};
   DateTime? _earliestHabitDate;
 
-  static const List<String> _months = [
-    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
-  ];
+  static const List<String> _months = kSpanishMonths;
 
   @override
   void initState() {

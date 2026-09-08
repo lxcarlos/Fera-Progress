@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'database/db_helper.dart';
 import 'theme/theme_provider.dart';
 import 'services/notification_service.dart';
+import 'utils/calendar_zoom.dart';
 import 'screens/main_nav.dart';
 
 void main() async {
@@ -12,6 +13,7 @@ void main() async {
   // el color/brillo de sus propias barras de sistema. Sin esto, algunos
   // teléfonos ignoran lo que le mandamos abajo y usan su propio criterio.
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  await CalendarZoom.init();
   await DBHelper().processMissedDays();
   await DBHelper().cleanupExpired();
   await NotificationService().init();

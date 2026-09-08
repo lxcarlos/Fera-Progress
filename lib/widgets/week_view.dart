@@ -66,10 +66,20 @@ class _WeekViewState extends State<WeekView> {
     _load();
     CalendarZoom.hourHeight.addListener(_onZoomChanged);
     AppEvents.tick.addListener(_onExternalChange);
+    _vController.addListener(() {
+      if (_vController.hasClients) {
+        CalendarZoom.updateScrollOffset(_vController.offset);
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_vController.hasClients) {
-        final hour = DateTime.now().hour;
-        _vController.jumpTo((hour - 1).clamp(0, 23) * _hourHeight);
+        if (CalendarZoom.lastScrollOffset >= 0) {
+          final maxOffset = _vController.position.maxScrollExtent;
+          _vController.jumpTo(CalendarZoom.lastScrollOffset.clamp(0.0, maxOffset));
+        } else {
+          final hour = DateTime.now().hour;
+          _vController.jumpTo((hour - 1).clamp(0, 23) * _hourHeight);
+        }
       }
     });
     _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {

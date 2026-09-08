@@ -7,6 +7,7 @@ import '../constants/categories.dart';
 import '../utils/color_utils.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/mascot_widget.dart';
+import '../widgets/year_heatmap.dart';
 import '../utils/app_events.dart';
 import 'settings_screen.dart';
 
@@ -42,6 +43,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _maxStreak = 0;
   int _totalCompletions = 0;
   bool _mascotJump = false;
+  Map<String, int> _completionCounts = {};
 
   @override
   void initState() {
@@ -67,15 +69,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final maxStreak = await _dbHelper.getMaxStreak();
     final totalCompletions = await _dbHelper.getTotalCompletions();
     final extraTotal = await _dbHelper.getExtraActivitiesTotalPoints();
-    final newTotal = habits.where((h) => !h.isTask).fold(0, (sum, h) => sum + h.points) + extraTotal;
+    final penalty = await _dbHelper.getInactivityPenalty();
+    final counts = await _dbHelper.getCompletionCountsByYear(DateTime.now().year);
+
+    final rawTotal = habits.where((h) => !h.isTask).fold(0, (sum, h) => sum + h.points) + extraTotal;
+    final finalTotal = (rawTotal - penalty) < 0 ? 0 : rawTotal - penalty;
 
     setState(() {
       _avatarName = prefs.getString('avatar_name') ?? 'Aventurero';
       _prevPoints = _totalPoints;
-      _totalPoints = newTotal;
+      _totalPoints = finalTotal;
       _categoryPoints = categoryPoints;
       _maxStreak = maxStreak;
       _totalCompletions = totalCompletions;
+      _completionCounts = counts;
     });
 
     if (_totalPoints > _prevPoints) {
@@ -265,6 +272,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Text(
                           'Faltan $_pointsToNextLevel pts para el siguiente nivel',
                           style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.4), fontSize: 12),
+                        ),
+                        const SizedBox(height: 18),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.06)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Días de hábitos (${DateTime.now().year})',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    '$_totalCompletions cumplidos',
+                                    style: TextStyle(
+                                      color: theme.colorScheme.primary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              YearHeatmap(year: DateTime.now().year, countsByDate: _completionCounts),
+                            ],
+                          ),
                         ),
                       ],
                     ),

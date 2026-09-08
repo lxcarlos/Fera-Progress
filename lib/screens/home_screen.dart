@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../database/db_helper.dart';
 import '../constants/categories.dart';
+import '../constants/color_palette.dart';
 import '../widgets/glass_picker.dart';
 import '../constants/design_tokens.dart';
 import '../utils/color_utils.dart';
 import '../utils/date_utils.dart';
 import '../widgets/pulse_fire_icon.dart';
 import '../widgets/glass_dialog.dart';
-import '../widgets/glass_picker.dart';
 import '../widgets/celebration_overlay.dart';
 import '../widgets/day_percent_ring.dart';
 import '../utils/app_events.dart';
@@ -175,10 +175,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<Habit> get _visibleHabitsForDate {
     return _habits.where((h) {
-      final createdDay = dateOnly(h.createdAt);
-      if (createdDay.isAfter(_selectedDate)) return false;
-      if (!_isToday && h.isTask) return false;
-      return true;
+      if (h.isTask) {
+        final taskDate = dateOnly(h.dueDate ?? h.createdAt);
+        return isSameDate(taskDate, _selectedDate);
+      } else {
+        final createdDay = dateOnly(h.createdAt);
+        return !createdDay.isAfter(_selectedDate);
+      }
     }).toList();
   }
 
@@ -221,6 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
     TimeOfDay? selectedTime;
     DateTime? selectedDueDate;
     String selectedCategory = 'general';
+    String? selectedColor;
     bool isTask = false;
 
     await showDialog(
@@ -273,15 +277,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (result != null) setDialogState(() => selectedCategory = result);
                   },
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 10),
+                ColorPickerField(
+                  selectedColor: selectedColor,
+                  fallbackColor: categoryAccent(context, selectedCategory),
+                  onChanged: (c) => setDialogState(() => selectedColor = c),
+                ),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Expanded(child: Text(selectedTime == null ? 'Sin hora límite' : 'Hora: ${selectedTime!.format(context)}')),
-                   
-                   
-                   
-                   
-                   TextButton(
+                    TextButton(
                       onPressed: () async {
                         FocusScope.of(context).unfocus();
                         final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
@@ -289,37 +295,28 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       child: const Text('Elegir hora'),
                     ),
-
-
-
-
-
                   ],
                 ),
                 Row(
                   children: [
                     Expanded(
                       child: Text(selectedDueDate == null
-                          ? 'Sin fecha límite'
+                          ? (isTask ? 'Fecha: ${formatDayMonth(_selectedDate)}' : 'Sin fecha límite')
                           : 'Fecha: ${selectedDueDate!.day}/${selectedDueDate!.month}/${selectedDueDate!.year}'),
                     ),
-                   
-
-                   TextButton(
+                    TextButton(
                       onPressed: () async {
                         FocusScope.of(context).unfocus();
                         final date = await showDatePicker(
                           context: context,
-                          initialDate: DateTime.now(),
-                          firstDate: DateTime.now(),
+                          initialDate: _selectedDate,
+                          firstDate: DateTime(2020),
                           lastDate: DateTime.now().add(const Duration(days: 3650)),
                         );
                         if (date != null) setDialogState(() => selectedDueDate = date);
                       },
                       child: const Text('Elegir fecha'),
                     ),
-
-
                   ],
                 ),
                 if (isTask)
@@ -337,6 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   if (nameController.text.trim().isEmpty) return;
 
+                  final effectiveDate = isTask ? (selectedDueDate ?? _selectedDate) : DateTime.now();
                   final habit = Habit(
                     name: nameController.text.trim(),
                     frequency: 'daily',
@@ -344,25 +342,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     timeLimit: selectedTime != null
                         ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
                         : null,
-                    dueDate: selectedDueDate,
-                    createdAt: DateTime.now(),
+                    dueDate: isTask ? (selectedDueDate ?? _selectedDate) : selectedDueDate,
+                    createdAt: effectiveDate,
                     category: selectedCategory,
                     isTask: isTask,
+                    color: selectedColor,
                   );
 
                   final newId = await _dbHelper.createHabit(habit);
-                  final habitWithId = Habit(
-                    id: newId,
-                    name: habit.name,
-                    frequency: habit.frequency,
-                    timeLimit: habit.timeLimit,
-                    dueDate: habit.dueDate,
-                    description: habit.description,
-                    createdAt: habit.createdAt,
-                    category: habit.category,
-                    isTask: habit.isTask,
-                  );
-                  await NotificationService().scheduleForHabit(habitWithId);
+                  final habitWithId = habit.copyWith(id: newId);
+                  if (habitWithId.isTask) {
+                    await NotificationService().scheduleForTask(habitWithId);
+                  } else {
+                    await NotificationService().scheduleForHabit(habitWithId);
+                  }
 
                   if (context.mounted) Navigator.pop(context);
                   _loadAll();
@@ -379,6 +372,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _addExtraActivity() async {
     final descController = TextEditingController();
     String selectedCategory = 'general';
+    String? selectedColor;
     int selectedPoints = 1;
 
     await showDialog(
@@ -414,6 +408,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (result != null) setDialogState(() => selectedCategory = result);
                 },
               ),
+              const SizedBox(height: 10),
+              ColorPickerField(
+                selectedColor: selectedColor,
+                fallbackColor: categoryAccent(context, selectedCategory),
+                onChanged: (c) => setDialogState(() => selectedColor = c),
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -446,6 +446,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   description: descController.text.trim(),
                   points: selectedPoints,
                   category: selectedCategory,
+                  color: selectedColor,
                 );
                 if (context.mounted) Navigator.pop(context);
                 _loadAll();
@@ -500,29 +501,275 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleHabitCompletion(Habit habit) async {
-    if (!_isToday || habit.isPaused || habit.id == null) return;
-    final today = DateTime.now();
+    if (habit.isPaused || habit.id == null) return;
     final record = _dateRecords[habit.id];
     final isCompleted = record != null && record['completed'] == 1;
-
-    if (isCompleted) {
-      await _dbHelper.unmarkHabitCompletion(habit.id!, today);
-      if (!habit.isTask) {
-        final newPoints = (habit.points - 1) < 0 ? 0 : habit.points - 1;
-        final newStreak = (habit.currentStreak - 1) < 0 ? 0 : habit.currentStreak - 1;
-        await _dbHelper.updateHabit(habit.copyWith(points: newPoints, currentStreak: newStreak));
-      }
-    } else {
-      await _dbHelper.markHabitCompletion(habit.id!, today, true);
-      if (!habit.isTask) {
-        final yesterday = today.subtract(const Duration(days: 1));
-        final wasYesterdayCompleted = await _dbHelper.wasCompletedOn(habit.id!, yesterday);
-        final newStreak = wasYesterdayCompleted ? habit.currentStreak + 1 : 1;
-        final newBestStreak = newStreak > habit.bestStreak ? newStreak : habit.bestStreak;
-        await _dbHelper.updateHabit(habit.copyWith(points: habit.points + 1, currentStreak: newStreak, bestStreak: newBestStreak));
-      }
-    }
+    await _dbHelper.setHabitCompletionWithEffects(habit.id!, _selectedDate, !isCompleted);
     _loadAll();
+  }
+
+  void _showHabitOrTaskPreview(Habit habit) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final itemColor = resolveColor(context, color: habit.color, category: habit.category);
+    final catData = kCategories[habit.category] ?? kCategories['general']!;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final curRecord = _dateRecords[habit.id];
+          final curCompleted = curRecord != null && curRecord['completed'] == 1;
+
+          return GlassDialog(
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: itemColor.withOpacity(isDark ? 0.25 : 0.20),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: itemColor.withOpacity(0.5)),
+                  ),
+                  child: Icon(catData['icon'] as IconData, size: 20, color: itemColor),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        habit.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: itemColor.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              habit.isTask ? 'Tarea del día' : (catData['label'] as String),
+                              style: TextStyle(
+                                color: itemColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: curCompleted ? Colors.green.withOpacity(0.15) : Colors.amber.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              curCompleted ? 'Cumplido ✅' : 'Pendiente ⏳',
+                              style: TextStyle(
+                                color: curCompleted ? Colors.green : Colors.amber.shade700,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Descripción', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.07)),
+                    ),
+                    child: Text(
+                      (habit.description != null && habit.description!.trim().isNotEmpty)
+                          ? habit.description!.trim()
+                          : 'Sin descripción registrada.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.4,
+                        fontStyle: (habit.description != null && habit.description!.trim().isNotEmpty)
+                            ? FontStyle.normal
+                            : FontStyle.italic,
+                        color: theme.colorScheme.onSurface.withOpacity(0.85),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  if (habit.timeLimit != null || habit.dueDate != null) ...[
+                    Row(
+                      children: [
+                        if (habit.timeLimit != null) ...[
+                          Icon(Icons.access_time, size: 15, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Hora: ${habit.timeLimit}',
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                          ),
+                          const SizedBox(width: 14),
+                        ],
+                        if (habit.dueDate != null) ...[
+                          Icon(Icons.calendar_today, size: 14, color: theme.colorScheme.onSurface.withOpacity(0.6)),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Fecha: ${habit.dueDate!.day}/${habit.dueDate!.month}/${habit.dueDate!.year}',
+                            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (!habit.isTask) ...[
+                    const Text('Progreso y Racha', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: itemColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: itemColor.withOpacity(0.3)),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text('Racha actual', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text('🔥', style: TextStyle(fontSize: 14)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${habit.currentStreak} días',
+                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: itemColor),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.07)),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text('Mejor racha', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text('🏆', style: TextStyle(fontSize: 14)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${habit.bestStreak} días',
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: isDark ? Colors.white.withOpacity(0.10) : Colors.black.withOpacity(0.07)),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text('Puntos', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Text('⭐', style: TextStyle(fontSize: 14)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${habit.points} pts',
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.calendar_month, size: 16),
+                        label: const Text('Ver historial completo'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: itemColor,
+                          side: BorderSide(color: itemColor.withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _openHistory(habit);
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _editHabit(habit);
+                },
+                child: const Text('Editar'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: itemColor),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await _toggleHabitCompletion(habit);
+                },
+                child: Text(curCompleted ? 'Desmarcar' : 'Marcar cumplido'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _togglePause(Habit habit) async {
@@ -631,12 +878,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             isCompletedToday: isCompleted,
                             isLate: _isLate(habit, completedAt),
                             countdown: isCompleted ? null : _countdownText(habit),
-                            readOnly: !_isToday,
                             onDelete: () => _confirmDelete(habit),
                             onComplete: () => _toggleHabitCompletion(habit),
                             onTogglePause: () => _togglePause(habit),
                             onEdit: () => _editHabit(habit),
-                            onOpenHistory: habit.isTask ? null : () => _openHistory(habit),
+                            onPreview: () => _showHabitOrTaskPreview(habit),
                           );
                         }),
                         if (_isToday && _extraActivities.isNotEmpty && _typeFilter != TypeFilter.tasks && _typeFilter != TypeFilter.done && _typeFilter != TypeFilter.notDone) ...[
@@ -660,13 +906,11 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          floatingActionButton: _isToday
-              ? FloatingActionButton(
-                  onPressed: _addHabit,
-                  backgroundColor: theme.colorScheme.primary,
-                  child: const Icon(Icons.add, color: Colors.black),
-                )
-              : null,
+          floatingActionButton: FloatingActionButton(
+            onPressed: _addHabit,
+            backgroundColor: theme.colorScheme.primary,
+            child: const Icon(Icons.add, color: Colors.black),
+          ),
         ),
         if (_showCelebration) CelebrationOverlay(key: _celebrationKey, color: theme.colorScheme.primary),
       ],
@@ -845,24 +1089,22 @@ class _GlassCard extends StatelessWidget {
   final bool isCompletedToday;
   final bool isLate;
   final String? countdown;
-  final bool readOnly;
   final VoidCallback onDelete;
   final VoidCallback onComplete;
   final VoidCallback onTogglePause;
   final VoidCallback onEdit;
-  final VoidCallback? onOpenHistory;
+  final VoidCallback onPreview;
 
   const _GlassCard({
     required this.habit,
     required this.isCompletedToday,
     required this.isLate,
     required this.countdown,
-    required this.readOnly,
     required this.onDelete,
     required this.onComplete,
     required this.onTogglePause,
     required this.onEdit,
-    required this.onOpenHistory,
+    required this.onPreview,
   });
 
   @override
@@ -870,11 +1112,10 @@ class _GlassCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final catData = kCategories[habit.category] ?? kCategories['general']!;
-    final accent = habit.isTask ? kTaskColor : theme.colorScheme.primary;
-    final catAccent = categoryAccent(context, habit.category);
+    final itemColor = resolveColor(context, color: habit.color, category: habit.category);
 
     return GestureDetector(
-      onTap: onOpenHistory,
+      onTap: onPreview,
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
@@ -883,67 +1124,99 @@ class _GlassCard extends StatelessWidget {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: habit.isPaused
                     ? (isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02))
-                    : catAccent.withOpacity(isDark ? 0.09 : 0.06),
+                    : itemColor.withOpacity(isDark
+                        ? (isCompletedToday ? 0.12 : 0.20)
+                        : (isCompletedToday ? 0.09 : 0.16)),
                 borderRadius: BorderRadius.circular(kCardRadius),
                 border: Border.all(
-                  color: habit.isTask ? accent.withOpacity(0.35) : catAccent.withOpacity(0.32),
-                  width: habit.isTask ? 1 : 1.3,
+                  color: habit.isPaused
+                      ? (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08))
+                      : itemColor.withOpacity(isDark
+                          ? (isCompletedToday ? 0.40 : 0.65)
+                          : (isCompletedToday ? 0.35 : 0.55)),
+                  width: 1.5,
                 ),
+                boxShadow: habit.isPaused
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: itemColor.withOpacity(isDark ? 0.15 : 0.08),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
               ),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: (readOnly || habit.isPaused) ? null : onComplete,
-                        child: AnimatedScale(
-                          scale: isCompletedToday ? 1.08 : 1.0,
-                          duration: const Duration(milliseconds: 150),
-                          child: Container(
-                            width: 30,
-                            height: 30,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: habit.isPaused
-                                  ? (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05))
-                                  : (isCompletedToday ? accent.withOpacity(0.15) : (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.04))),
-                              border: Border.all(
-                                color: habit.isPaused
-                                    ? (isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))
-                                    : (isCompletedToday ? accent : theme.colorScheme.onSurface.withOpacity(0.25)),
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Icon(
-                              isCompletedToday ? Icons.check : Icons.close,
-                              size: 16,
-                              color: habit.isPaused
-                                  ? (isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))
-                                  : (isCompletedToday ? accent : theme.colorScheme.onSurface.withOpacity(0.3)),
-                            ),
+                  Container(
+                    width: 4,
+                    height: 38,
+                    margin: const EdgeInsets.only(right: 12, top: 1),
+                    decoration: BoxDecoration(
+                      color: habit.isPaused ? Colors.grey.withOpacity(0.4) : itemColor,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: habit.isPaused ? null : onComplete,
+                    child: AnimatedScale(
+                      scale: isCompletedToday ? 1.08 : 1.0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        margin: const EdgeInsets.only(top: 2),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: habit.isPaused
+                              ? (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05))
+                              : (isCompletedToday
+                                  ? itemColor
+                                  : (isDark ? itemColor.withOpacity(0.15) : itemColor.withOpacity(0.12))),
+                          border: Border.all(
+                            color: habit.isPaused
+                                ? (isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))
+                                : (isCompletedToday ? itemColor : itemColor.withOpacity(0.7)),
+                            width: 1.8,
                           ),
                         ),
+                        child: Icon(
+                          isCompletedToday ? Icons.check : Icons.circle,
+                          size: isCompletedToday ? 16 : 8,
+                          color: habit.isPaused
+                              ? (isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))
+                              : (isCompletedToday ? Colors.white : itemColor.withOpacity(0.7)),
+                        ),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Row(
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Icon(catData['icon'] as IconData, size: 13, color: catAccent),
-                            const SizedBox(width: 4),
+                            Icon(catData['icon'] as IconData, size: 13, color: itemColor),
+                            const SizedBox(width: 5),
                             Flexible(
                               child: Text(
                                 habit.name,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: habit.isPaused ? theme.colorScheme.onSurface.withOpacity(0.4) : theme.colorScheme.onSurface,
+                                  color: habit.isPaused
+                                      ? theme.colorScheme.onSurface.withOpacity(0.4)
+                                      : (isCompletedToday
+                                          ? theme.colorScheme.onSurface.withOpacity(0.7)
+                                          : theme.colorScheme.onSurface),
                                   fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  decoration: habit.isPaused ? TextDecoration.lineThrough : null,
+                                  fontWeight: FontWeight.w600,
+                                  decoration: (habit.isPaused || isCompletedToday) ? TextDecoration.lineThrough : null,
                                 ),
                               ),
                             ),
@@ -951,60 +1224,102 @@ class _GlassCard extends StatelessWidget {
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(color: kTaskColor.withOpacity(0.18), borderRadius: BorderRadius.circular(kChipRadius)),
-                                child: Text('tarea', style: TextStyle(color: kTaskColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                                decoration: BoxDecoration(
+                                  color: itemColor.withOpacity(0.20),
+                                  borderRadius: BorderRadius.circular(kChipRadius),
+                                  border: Border.all(color: itemColor.withOpacity(0.4), width: 0.8),
+                                ),
+                                child: Text('tarea', style: TextStyle(color: itemColor, fontSize: 10, fontWeight: FontWeight.w700)),
                               ),
                             ],
                           ],
                         ),
-                      ),
-                      if (!readOnly) ...[
-                        IconButton(icon: Icon(Icons.edit, color: theme.colorScheme.onSurface.withOpacity(0.4), size: 18), onPressed: onEdit),
-                        IconButton(
-                          icon: Icon(habit.isPaused ? Icons.play_arrow : Icons.pause, color: theme.colorScheme.onSurface.withOpacity(0.4), size: 20),
-                          onPressed: onTogglePause,
+                        if (habit.description != null && habit.description!.trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            habit.description!.trim(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurface.withOpacity(0.65),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 5),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 4,
+                          children: [
+                            if (!habit.isTask)
+                              Text(
+                                'Puntos: ${habit.points}',
+                                style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: 12, fontWeight: FontWeight.w500),
+                              ),
+                            if (!habit.isTask && habit.currentStreak > 0)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.local_fire_department, size: 13, color: Colors.orange),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    '${habit.currentStreak} días',
+                                    style: const TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            if (countdown != null)
+                              Text(
+                                countdown!,
+                                style: TextStyle(
+                                  color: countdown == 'Vencido' ? Colors.red.withOpacity(0.85) : theme.colorScheme.onSurface.withOpacity(0.55),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            if (isLate)
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.watch_later_outlined, size: 12, color: Colors.orange.withOpacity(0.85)),
+                                  const SizedBox(width: 2),
+                                  Text('Con retraso', style: TextStyle(color: Colors.orange.withOpacity(0.85), fontSize: 12)),
+                                ],
+                              ),
+                            if (habit.isPaused)
+                              Text('Pausado', style: TextStyle(color: Colors.orange.withOpacity(0.8), fontSize: 12, fontStyle: FontStyle.italic)),
+                          ],
                         ),
-                        IconButton(icon: Icon(Icons.close, color: theme.colorScheme.onSurface.withOpacity(0.4), size: 20), onPressed: onDelete),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 44),
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 4,
-                      children: [
-                        if (!habit.isTask)
-                          Text('Puntos: ${habit.points}', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
-                        if (!habit.isTask && habit.currentStreak > 0)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.local_fire_department, size: 12, color: Colors.orange),
-                              const SizedBox(width: 2),
-                              Text('${habit.currentStreak} días', style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
-                            ],
-                          ),
-                        if (countdown != null && !readOnly)
-                          Text(countdown!,
-                              style: TextStyle(
-                                color: countdown == 'Vencido' ? Colors.red.withOpacity(0.8) : theme.colorScheme.onSurface.withOpacity(0.4),
-                                fontSize: 12,
-                              )),
-                        if (isLate)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.watch_later_outlined, size: 12, color: Colors.orange.withOpacity(0.8)),
-                              const SizedBox(width: 2),
-                              Text('Con retraso', style: TextStyle(color: Colors.orange.withOpacity(0.8), fontSize: 12)),
-                            ],
-                          ),
-                        if (habit.isPaused && !readOnly)
-                          Text('Pausado', style: TextStyle(color: Colors.orange.withOpacity(0.7), fontSize: 12, fontStyle: FontStyle.italic)),
                       ],
                     ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.edit, color: theme.colorScheme.onSurface.withOpacity(0.4), size: 17),
+                        tooltip: 'Editar',
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        onPressed: onEdit,
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(habit.isPaused ? Icons.play_arrow : Icons.pause, color: theme.colorScheme.onSurface.withOpacity(0.4), size: 19),
+                        tooltip: habit.isPaused ? 'Reanudar' : 'Pausar',
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        onPressed: onTogglePause,
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: Icon(Icons.close, color: theme.colorScheme.onSurface.withOpacity(0.4), size: 19),
+                        tooltip: 'Eliminar',
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        onPressed: onDelete,
+                      ),
+                    ],
                   ),
                 ],
               ),

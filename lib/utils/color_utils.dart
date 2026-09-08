@@ -15,12 +15,12 @@ import 'package:flutter/material.dart';
 Color contrastColor(Color color, bool isDark) {
   final hsl = HSLColor.fromColor(color);
   if (isDark) {
-    final saturation = (hsl.saturation + 0.18).clamp(0.0, 1.0);
+    final saturation = (hsl.saturation + 0.22).clamp(0.0, 1.0);
     final lightness = hsl.lightness.clamp(0.55, 0.72);
     return hsl.withSaturation(saturation).withLightness(lightness).toColor();
   } else {
-    final lightness = (hsl.lightness - 0.20).clamp(0.0, 1.0);
-    final saturation = (hsl.saturation + 0.08).clamp(0.0, 1.0);
+    final lightness = (hsl.lightness - 0.16).clamp(0.35, 0.56);
+    final saturation = (hsl.saturation + 0.18).clamp(0.0, 1.0);
     return hsl.withLightness(lightness).withSaturation(saturation).toColor();
   }
 }

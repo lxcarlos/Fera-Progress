@@ -57,10 +57,20 @@ class _DayAgendaState extends State<DayAgenda> {
     _load();
     CalendarZoom.hourHeight.addListener(_onZoomChanged);
     AppEvents.tick.addListener(_onExternalChange);
+    _scrollController.addListener(() {
+      if (_scrollController.hasClients) {
+        CalendarZoom.updateScrollOffset(_scrollController.offset);
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_isToday && _scrollController.hasClients) {
-        final hour = DateTime.now().hour;
-        _scrollController.jumpTo((hour - 1).clamp(0, 23) * _hourHeight);
+      if (_scrollController.hasClients) {
+        if (CalendarZoom.lastScrollOffset >= 0) {
+          final maxOffset = _scrollController.position.maxScrollExtent;
+          _scrollController.jumpTo(CalendarZoom.lastScrollOffset.clamp(0.0, maxOffset));
+        } else if (_isToday) {
+          final hour = DateTime.now().hour;
+          _scrollController.jumpTo((hour - 1).clamp(0, 23) * _hourHeight);
+        }
       }
     });
     _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {

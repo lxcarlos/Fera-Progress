@@ -64,6 +64,7 @@ class CalendarEvent {
       );
 
   CalendarEvent copyWith({
+    int? id,
     String? title,
     String? description,
     String? startTime,
@@ -79,7 +80,7 @@ class CalendarEvent {
     bool clearColor = false,
   }) =>
       CalendarEvent(
-        id: id,
+        id: id ?? this.id,
         title: title ?? this.title,
         description: description ?? this.description,
         startTime: startTime ?? this.startTime,

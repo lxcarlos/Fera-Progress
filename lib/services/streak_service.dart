@@ -12,18 +12,45 @@ class StreakService {
 
   Future<StreakInfo> getStreakInfo() async {
     final prefs = await SharedPreferences.getInstance();
-    int current = 0;
-    DateTime cursor = DateTime.now();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
 
-    for (int i = 0; i < 400; i++) {
-      final stats = await _db.getDayStats(cursor);
-      final total = stats['total'] ?? 0;
-      final completed = stats['completed'] ?? 0;
-      if (total > 0 && completed == total) {
-        current++;
-        cursor = cursor.subtract(const Duration(days: 1));
+    // Verificar primero si el día de hoy ya está 100% completado
+    final todayStats = await _db.getDayStats(today);
+    final todayTotal = todayStats['total'] ?? 0;
+    final todayCompleted = todayStats['completed'] ?? 0;
+    final todayDone = todayTotal > 0 && todayCompleted == todayTotal;
+
+    DateTime cursor;
+    if (todayDone) {
+      current = 1;
+      cursor = today.subtract(const Duration(days: 1));
+    } else {
+      // Si hoy aún está en curso, verificar si ayer sí se completó
+      final yesterday = today.subtract(const Duration(days: 1));
+      final yesterdayStats = await _db.getDayStats(yesterday);
+      final yTotal = yesterdayStats['total'] ?? 0;
+      final yCompleted = yesterdayStats['completed'] ?? 0;
+      if (yTotal > 0 && yCompleted == yTotal) {
+        current = 1;
+        cursor = yesterday.subtract(const Duration(days: 1));
       } else {
-        break;
+        // Ni hoy ni ayer se cumplieron -> racha rota
+        cursor = today;
+      }
+    }
+
+    if (current > 0) {
+      for (int i = 0; i < 400; i++) {
+        final stats = await _db.getDayStats(cursor);
+        final total = stats['total'] ?? 0;
+        final completed = stats['completed'] ?? 0;
+        if (total > 0 && completed == total) {
+          current++;
+          cursor = cursor.subtract(const Duration(days: 1));
+        } else {
+          break;
+        }
       }
     }
 

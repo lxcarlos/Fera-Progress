@@ -31,7 +31,7 @@ Color hexToColor(String hex) {
 }
 
 String colorToHex(Color color) {
-  return '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+  return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
 }
 
 /// Abre la cuadrícula de colores (como la de Google Calendar) en una hoja

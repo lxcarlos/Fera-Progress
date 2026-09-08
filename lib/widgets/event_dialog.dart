@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/calendar_event.dart';
 import '../models/habit.dart';
+import '../services/notification_service.dart';
 
 import '../constants/categories.dart';
 import '../constants/color_palette.dart';
@@ -424,6 +425,9 @@ Future<void> showEventDialog(
                   } else if (scope == 'forward') {
                     await dbHelper.deleteEventFromDateOnward(existing, date);
                   }
+                  if (scope == 'all' || !existing.isRecurring) {
+                    await NotificationService().cancelForEvent(existing.id);
+                  }
                   if (context.mounted) Navigator.pop(context);
                   onSaved();
                 },
@@ -469,7 +473,8 @@ Future<void> showEventDialog(
                     color: eventColor,
                     createdAt: DateTime.now(),
                   );
-                  await dbHelper.createEvent(event, linkedHabitIds: linkedHabitIds);
+                  final newId = await dbHelper.createEvent(event, linkedHabitIds: linkedHabitIds);
+                  await NotificationService().scheduleForEvent(event.copyWith(id: newId));
                 } else {
                   final updated = existing.copyWith(
                     title: titleController.text.trim(),
@@ -498,6 +503,7 @@ Future<void> showEventDialog(
                   } else {
                     await dbHelper.updateEvent(updated, linkedHabitIds: linkedHabitIds);
                   }
+                  await NotificationService().scheduleForEvent(updated);
                 }
                 if (context.mounted) Navigator.pop(context);
                 onSaved();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/habit.dart';
 import '../constants/categories.dart';
+import '../constants/color_palette.dart';
 import '../database/db_helper.dart';
 import '../services/notification_service.dart';
 import '../widgets/glass_dialog.dart';
@@ -18,6 +19,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
   late TextEditingController _nameController;
   late TextEditingController _descController;
   late String _category;
+  String? _color;
   TimeOfDay? _timeLimit;
   DateTime? _dueDate;
   final DBHelper _dbHelper = DBHelper();
@@ -28,6 +30,7 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
     _nameController = TextEditingController(text: widget.habit.name);
     _descController = TextEditingController(text: widget.habit.description ?? '');
     _category = widget.habit.category;
+    _color = widget.habit.color;
     _dueDate = widget.habit.dueDate;
     if (widget.habit.timeLimit != null) {
       final parts = widget.habit.timeLimit!.split(':');
@@ -48,10 +51,16 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
       dueDate: _dueDate,
       clearTimeLimit: _timeLimit == null,
       clearDueDate: _dueDate == null,
+      color: _color,
+      clearColor: _color == null,
     );
 
     await _dbHelper.updateHabit(updated);
-    await NotificationService().scheduleForHabit(updated);
+    if (updated.isTask) {
+      await NotificationService().scheduleForTask(updated);
+    } else {
+      await NotificationService().scheduleForHabit(updated);
+    }
     if (mounted) Navigator.pop(context, true);
   }
 
@@ -94,6 +103,12 @@ class _HabitDetailScreenState extends State<HabitDetailScreen> {
                   );
                   if (result != null) setState(() => _category = result);
                 },
+              ),
+              const SizedBox(height: 12),
+              ColorPickerField(
+                selectedColor: _color,
+                fallbackColor: categoryAccent(context, _category),
+                onChanged: (c) => setState(() => _color = c),
               ),
               const SizedBox(height: 16),
               Row(

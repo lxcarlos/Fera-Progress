@@ -22,7 +22,13 @@ class DBHelper {
   Future<Database> _initDB() async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, 'feraprogress.db');
-    return await openDatabase(path, version: 8, onCreate: _createDB, onUpgrade: _upgradeDB);
+    return await openDatabase(
+      path,
+      version: 8,
+      onConfigure: (db) async => await db.execute('PRAGMA foreign_keys = ON;'),
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -112,6 +118,9 @@ class DBHelper {
         FOREIGN KEY (habitId) REFERENCES habits (id) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_habit_records_habit_date ON habit_records(habitId, date)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_event_records_event_date ON event_records(eventId, date)');
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -165,13 +174,6 @@ class DBHelper {
       ''');
     }
 
-    if (oldVersion < 8) {
-      await db.execute("ALTER TABLE habits ADD COLUMN color TEXT");
-      await db.execute("ALTER TABLE calendar_events ADD COLUMN color TEXT");
-      await db.execute("ALTER TABLE extra_activities ADD COLUMN color TEXT");
-    }
-    
-
     if (oldVersion < 7) {
       // Nuevas columnas para repetición semanal por día y fecha límite.
       await db.execute("ALTER TABLE calendar_events ADD COLUMN weekdays TEXT");
@@ -196,10 +198,6 @@ class DBHelper {
         )
       ''');
 
-      // Migrar eventos existentes al nuevo esquema de recurrencia:
-      // 'daily' -> semanal con los 7 días marcados (mismo comportamiento).
-      // 'weekly' -> semanal con solo el día original marcado.
-      // 'monthly' (ya no existe en la app) -> se conserva como fecha única.
       final existingEvents = await db.query('calendar_events');
       for (final e in existingEvents) {
         final id = e['id'] as int;
@@ -223,12 +221,20 @@ class DBHelper {
           whereArgs: [id],
         );
 
-        // linkedHabitId (columna vieja, si existía) -> event_habit_links.
         if (e.containsKey('linkedHabitId') && e['linkedHabitId'] != null) {
           await db.insert('event_habit_links', {'eventId': id, 'habitId': e['linkedHabitId']});
         }
       }
     }
+
+    if (oldVersion < 8) {
+      await db.execute("ALTER TABLE habits ADD COLUMN color TEXT");
+      await db.execute("ALTER TABLE calendar_events ADD COLUMN color TEXT");
+      await db.execute("ALTER TABLE extra_activities ADD COLUMN color TEXT");
+    }
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_habit_records_habit_date ON habit_records(habitId, date)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_event_records_event_date ON event_records(eventId, date)');
   }
 
   // ---- Hábitos ----
@@ -280,6 +286,7 @@ class DBHelper {
         'completedAt': completed ? DateTime.now().toIso8601String() : null,
       });
     }
+    await _applyInactivityPenalty(DateTime.now());
     AppEvents.notifyDataChanged();
   }
 
@@ -292,6 +299,7 @@ class DBHelper {
       where: 'habitId = ? AND date = ?',
       whereArgs: [habitId, dateStr],
     );
+    await _applyInactivityPenalty(DateTime.now());
     AppEvents.notifyDataChanged();
   }
 
@@ -366,17 +374,57 @@ class DBHelper {
 
         if (existing.isEmpty) {
           await db.insert('habit_records', {'habitId': habit.id, 'date': dateStr, 'completed': 0, 'completedAt': null});
-
-          final freshHabit = await db.query('habits', where: 'id = ?', whereArgs: [habit.id]);
-          if (freshHabit.isNotEmpty) {
-            final currentPoints = freshHabit.first['points'] as int;
-            final newPoints = (currentPoints - 1) < 0 ? 0 : currentPoints - 1;
-            await db.update('habits', {'points': newPoints, 'currentStreak': 0}, where: 'id = ?', whereArgs: [habit.id]);
-          }
         }
         cursor = cursor.add(const Duration(days: 1));
       }
     }
+
+    // Regla de inactividad de puntos: si pasan más de 3 días consecutivos
+    // sin completar ningún hábito, a partir del 4º día se descuenta 1 punto
+    // del acumulado general del perfil por cada día inactivo adicional.
+    await _applyInactivityPenalty(today);
+  }
+
+  Future<void> _applyInactivityPenalty(DateTime today) async {
+    final db = await database;
+    final prefs = await SharedPreferences.getInstance();
+
+    final earliest = await getEarliestHabitDate();
+    if (earliest == null) return;
+
+    DateTime start = DateTime(earliest.year, earliest.month, earliest.day);
+    final maxBack = today.subtract(const Duration(days: 60));
+    if (start.isBefore(maxBack)) start = maxBack;
+
+    int consecutiveInactiveDays = 0;
+    int totalPenalty = 0;
+
+    DateTime cursor = start;
+    while (cursor.isBefore(today)) {
+      final dateStr = cursor.toIso8601String().split('T')[0];
+      final res = await db.rawQuery(
+        'SELECT COUNT(*) as count FROM habit_records WHERE date = ? AND completed = 1',
+        [dateStr],
+      );
+      final completedCount = (res.first['count'] as int?) ?? 0;
+
+      if (completedCount > 0) {
+        consecutiveInactiveDays = 0;
+      } else {
+        consecutiveInactiveDays++;
+        if (consecutiveInactiveDays > 3) {
+          totalPenalty++;
+        }
+      }
+      cursor = cursor.add(const Duration(days: 1));
+    }
+
+    await prefs.setInt('inactivity_penalty_points', totalPenalty);
+  }
+
+  Future<int> getInactivityPenalty() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('inactivity_penalty_points') ?? 0;
   }
 
   Future<void> cleanupExpired() async {
@@ -401,21 +449,8 @@ class DBHelper {
       await prefs.setInt('banked_extra_points', currentBank + pointsToBank);
       await db.delete('extra_activities', where: 'id IN (${extraIdsToDelete.join(',')})');
     }
-
-    final tasks = await db.query('habits', where: 'isTask = 1');
-    for (final t in tasks) {
-      DateTime expiry;
-      if (t['dueDate'] != null) {
-        final due = DateTime.parse(t['dueDate'] as String);
-        expiry = DateTime(due.year, due.month, due.day, 23, 59, 59);
-      } else {
-        final created = DateTime.parse(t['createdAt'] as String);
-        expiry = DateTime(created.year, created.month, created.day, 23, 59, 59);
-      }
-      if (now.isAfter(expiry)) {
-        await db.delete('habits', where: 'id = ?', whereArgs: [t['id']]);
-      }
-    }
+    // Las tareas (isTask = 1) ahora persisten indefinidamente para que el usuario
+    // pueda revisar cualquier día pasado y ver cuáles se cumplieron y cuáles no.
   }
 
   Future<Map<String, int>> getPointsByCategory() async {
@@ -812,6 +847,43 @@ class DBHelper {
     } else {
       await db.insert('event_records', {'eventId': eventId, 'date': dateStr, 'completed': completed ? 1 : 0});
     }
+    AppEvents.notifyDataChanged();
+  }
+
+  /// Marca o desmarca un hábito/tarea en una fecha dada, actualizando
+  /// sus registros, puntos, rachas e inactividad en el perfil.
+  Future<void> setHabitCompletionWithEffects(int habitId, DateTime date, bool completed) async {
+    final db = await database;
+    final habitList = await db.query('habits', where: 'id = ?', whereArgs: [habitId]);
+    if (habitList.isEmpty) return;
+    final habit = Habit.fromMap(habitList.first);
+
+    if (completed) {
+      await markHabitCompletion(habitId, date, true);
+      if (!habit.isTask) {
+        final yesterday = date.subtract(const Duration(days: 1));
+        final wasYesterdayCompleted = await wasCompletedOn(habitId, yesterday);
+        final newStreak = wasYesterdayCompleted ? habit.currentStreak + 1 : 1;
+        final newBestStreak = newStreak > habit.bestStreak ? newStreak : habit.bestStreak;
+        await updateHabit(habit.copyWith(
+          points: habit.points + 1,
+          currentStreak: newStreak,
+          bestStreak: newBestStreak,
+        ));
+      }
+    } else {
+      await unmarkHabitCompletion(habitId, date);
+      if (!habit.isTask) {
+        final newPoints = (habit.points - 1) < 0 ? 0 : habit.points - 1;
+        final newStreak = (habit.currentStreak - 1) < 0 ? 0 : habit.currentStreak - 1;
+        await updateHabit(habit.copyWith(
+          points: newPoints,
+          currentStreak: newStreak,
+        ));
+      }
+    }
+
+    await _applyInactivityPenalty(DateTime.now());
     AppEvents.notifyDataChanged();
   }
 

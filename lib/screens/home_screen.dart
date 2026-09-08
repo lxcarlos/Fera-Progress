@@ -8,13 +8,11 @@ import '../widgets/glass_picker.dart';
 import '../constants/design_tokens.dart';
 import '../utils/color_utils.dart';
 import '../utils/date_utils.dart';
-import '../widgets/pulse_fire_icon.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/celebration_overlay.dart';
 import '../widgets/day_percent_ring.dart';
 import '../utils/app_events.dart';
 import '../services/notification_service.dart';
-import '../services/streak_service.dart';
 import 'habit_detail_screen.dart';
 import 'habit_history_screen.dart';
 import 'calendar_stats_screen.dart';
@@ -68,14 +66,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final DBHelper _dbHelper = DBHelper();
-  final StreakService _streakService = StreakService();
 
   List<Habit> _habits = [];
   List<Map<String, dynamic>> _extraActivities = [];
   Map<int, Map<String, dynamic>?> _dateRecords = {};
-  int _extraPointsTotal = 0;
   DateTime _selectedDate = DateTime.now();
-  StreakInfo _streakInfo = StreakInfo(0, 0);
 
   TypeFilter _typeFilter = TypeFilter.all;
   String? _categoryFilter;
@@ -129,8 +124,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadAll() async {
     final habits = await _dbHelper.getAllHabits();
     final extras = _isToday ? await _dbHelper.getRecentExtraActivities(limit: 5) : <Map<String, dynamic>>[];
-    final extraTotal = await _dbHelper.getExtraActivitiesTotalPoints();
-    final streakInfo = await _streakService.getStreakInfo();
 
     final Map<int, Map<String, dynamic>?> records = {};
     for (final h in habits) {
@@ -148,8 +141,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _habits = habits;
       _extraActivities = extras;
       _dateRecords = records;
-      _extraPointsTotal = extraTotal;
-      _streakInfo = streakInfo;
       _todayHasHabits = todayHabitsOnly.isNotEmpty;
       _todayHabitPercent = todayPercent;
     });
@@ -167,11 +158,6 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _selectedDate = dateOnly(newDate));
     _loadAll();
   }
-
-  int get _habitPoints => _habits.where((h) => !h.isTask).fold(0, (sum, h) => sum + h.points);
-  int get _totalPoints => _habitPoints + _extraPointsTotal;
-  int get _level => (_totalPoints / 100).floor() + 1;
-  int get _pointsToNextLevel => (_level * 100) - _totalPoints;
 
   List<Habit> get _visibleHabitsForDate {
     return _habits.where((h) {

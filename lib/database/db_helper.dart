@@ -850,42 +850,6 @@ class DBHelper {
     AppEvents.notifyDataChanged();
   }
 
-  /// Marca o desmarca un hábito/tarea en una fecha dada, actualizando
-  /// sus registros, puntos, rachas e inactividad en el perfil.
-  Future<void> setHabitCompletionWithEffects(int habitId, DateTime date, bool completed) async {
-    final db = await database;
-    final habitList = await db.query('habits', where: 'id = ?', whereArgs: [habitId]);
-    if (habitList.isEmpty) return;
-    final habit = Habit.fromMap(habitList.first);
-
-    if (completed) {
-      await markHabitCompletion(habitId, date, true);
-      if (!habit.isTask) {
-        final yesterday = date.subtract(const Duration(days: 1));
-        final wasYesterdayCompleted = await wasCompletedOn(habitId, yesterday);
-        final newStreak = wasYesterdayCompleted ? habit.currentStreak + 1 : 1;
-        final newBestStreak = newStreak > habit.bestStreak ? newStreak : habit.bestStreak;
-        await updateHabit(habit.copyWith(
-          points: habit.points + 1,
-          currentStreak: newStreak,
-          bestStreak: newBestStreak,
-        ));
-      }
-    } else {
-      await unmarkHabitCompletion(habitId, date);
-      if (!habit.isTask) {
-        final newPoints = (habit.points - 1) < 0 ? 0 : habit.points - 1;
-        final newStreak = (habit.currentStreak - 1) < 0 ? 0 : habit.currentStreak - 1;
-        await updateHabit(habit.copyWith(
-          points: newPoints,
-          currentStreak: newStreak,
-        ));
-      }
-    }
-
-    await _applyInactivityPenalty(DateTime.now());
-    AppEvents.notifyDataChanged();
-  }
 
   /// Marca/desmarca un evento Y, en el mismo momento, aplica el efecto a
   /// TODOS los hábitos/tareas vinculados a él (puede ser uno o varios).

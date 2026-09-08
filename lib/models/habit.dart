@@ -70,6 +70,7 @@ class Habit {
   }
 
   Habit copyWith({
+    int? id,
     String? name,
     String? category,
     String? timeLimit,
@@ -86,7 +87,7 @@ class Habit {
     bool clearColor = false,
   }) {
     return Habit(
-      id: id,
+      id: id ?? this.id,
       name: name ?? this.name,
       frequency: frequency,
       timeLimit: clearTimeLimit ? null : (timeLimit ?? this.timeLimit),

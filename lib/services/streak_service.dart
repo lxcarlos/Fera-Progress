@@ -21,6 +21,7 @@ class StreakService {
     final todayCompleted = todayStats['completed'] ?? 0;
     final todayDone = todayTotal > 0 && todayCompleted == todayTotal;
 
+    int current = 0;
     DateTime cursor;
     if (todayDone) {
       current = 1;

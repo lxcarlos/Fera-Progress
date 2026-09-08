@@ -97,7 +97,7 @@ class NotificationService {
       scheduled = scheduled.add(const Duration(days: 1));
     }
 
-    final title = '🔥 Hábito: ${habit.name}';
+    final title = 'Hábito: ${habit.name}';
     final body = minutesBefore == 0
         ? 'Hora de cumplir: "${habit.name}"'
         : 'Faltan $minutesBefore min para tu hábito (${habit.timeLimit})';
@@ -159,7 +159,7 @@ class NotificationService {
       return;
     }
 
-    final title = '✅ Tarea: ${task.name}';
+    final title = 'Tarea: ${task.name}';
     final body = minutesBefore == 0
         ? 'Es momento de tu tarea: "${task.name}"'
         : 'Tu tarea "${task.name}" vence en $minutesBefore min';
@@ -217,7 +217,7 @@ class NotificationService {
     );
     const notifDetails = NotificationDetails(android: androidDetails, iOS: DarwinNotificationDetails());
 
-    final title = '📅 Evento: ${event.title}';
+    final title = 'Evento: ${event.title}';
 
     if (!event.isRecurring) {
       final eventDate = event.date;

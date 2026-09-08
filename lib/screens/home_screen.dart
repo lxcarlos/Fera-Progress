@@ -555,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              curCompleted ? 'Cumplido ✅' : 'Pendiente ⏳',
+                              curCompleted ? 'Cumplido' : 'Pendiente',
                               style: TextStyle(
                                 color: curCompleted ? Colors.green : Colors.amber.shade700,
                                 fontSize: 11,
@@ -644,7 +644,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Text('🔥', style: TextStyle(fontSize: 14)),
+                                    Icon(Icons.local_fire_department, size: 16, color: itemColor),
                                     const SizedBox(width: 4),
                                     Text(
                                       '${habit.currentStreak} días',
@@ -672,7 +672,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Text('🏆', style: TextStyle(fontSize: 14)),
+                                    const Icon(Icons.emoji_events_outlined, size: 16, color: Colors.amber),
                                     const SizedBox(width: 4),
                                     Text(
                                       '${habit.bestStreak} días',
@@ -700,7 +700,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    const Text('⭐', style: TextStyle(fontSize: 14)),
+                                    Icon(Icons.star_outline, size: 16, color: theme.colorScheme.onSurface.withOpacity(0.8)),
                                     const SizedBox(width: 4),
                                     Text(
                                       '${habit.points} pts',
@@ -1113,75 +1113,32 @@ class _GlassCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: habit.isPaused
-                    ? (isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02))
-                    : itemColor.withOpacity(isDark
-                        ? (isCompletedToday ? 0.12 : 0.20)
-                        : (isCompletedToday ? 0.09 : 0.16)),
-                borderRadius: BorderRadius.circular(kCardRadius),
+                    ? (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03))
+                    : itemColor.withOpacity(isCompletedToday ? 0.12 : 0.22),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: habit.isPaused
                       ? (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08))
-                      : itemColor.withOpacity(isDark
-                          ? (isCompletedToday ? 0.40 : 0.65)
-                          : (isCompletedToday ? 0.35 : 0.55)),
-                  width: 1.5,
+                      : itemColor.withOpacity(isCompletedToday ? 0.35 : 0.6),
+                  width: 1.0,
                 ),
-                boxShadow: habit.isPaused
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: itemColor.withOpacity(isDark ? 0.15 : 0.08),
-                          blurRadius: 10,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 4,
-                    height: 38,
-                    margin: const EdgeInsets.only(right: 12, top: 1),
-                    decoration: BoxDecoration(
-                      color: habit.isPaused ? Colors.grey.withOpacity(0.4) : itemColor,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  ),
                   GestureDetector(
                     onTap: habit.isPaused ? null : onComplete,
-                    child: AnimatedScale(
-                      scale: isCompletedToday ? 1.08 : 1.0,
-                      duration: const Duration(milliseconds: 150),
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        margin: const EdgeInsets.only(top: 2),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: habit.isPaused
-                              ? (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05))
-                              : (isCompletedToday
-                                  ? itemColor
-                                  : (isDark ? itemColor.withOpacity(0.15) : itemColor.withOpacity(0.12))),
-                          border: Border.all(
-                            color: habit.isPaused
-                                ? (isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))
-                                : (isCompletedToday ? itemColor : itemColor.withOpacity(0.7)),
-                            width: 1.8,
-                          ),
-                        ),
-                        child: Icon(
-                          isCompletedToday ? Icons.check : Icons.circle,
-                          size: isCompletedToday ? 16 : 8,
-                          color: habit.isPaused
-                              ? (isDark ? Colors.white.withOpacity(0.2) : Colors.black.withOpacity(0.2))
-                              : (isCompletedToday ? Colors.white : itemColor.withOpacity(0.7)),
-                        ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 1, right: 10),
+                      child: Icon(
+                        isCompletedToday ? Icons.check_circle : Icons.radio_button_unchecked,
+                        size: 24,
+                        color: habit.isPaused
+                            ? (isDark ? Colors.white.withOpacity(0.25) : Colors.black.withOpacity(0.25))
+                            : (isCompletedToday ? itemColor : itemColor.withOpacity(0.6)),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

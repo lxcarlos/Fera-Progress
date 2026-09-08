@@ -1,5 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../theme/theme_provider.dart';
+import '../theme/dynamic_accent.dart';
 import '../models/habit.dart';
 import '../database/db_helper.dart';
 import '../constants/categories.dart';
@@ -892,13 +895,42 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: _addHabit,
-            backgroundColor: theme.colorScheme.primary,
-            child: const Icon(Icons.add, color: Colors.black),
+          floatingActionButton: DynamicAccentBuilder(
+            controller: context.watch<ThemeProvider>().accentController,
+            builder: (context, accent, glow) {
+              final isTron = context.watch<ThemeProvider>().visualStyle == AppVisualStyle.tron;
+              return Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: (isTron || glow > 2.0)
+                      ? [
+                          BoxShadow(
+                            color: accent.withOpacity(0.4),
+                            blurRadius: glow * 1.5,
+                            spreadRadius: glow * 0.2,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: FloatingActionButton(
+                  onPressed: _addHabit,
+                  backgroundColor: accent,
+                  child: Icon(
+                    Icons.add,
+                    color: ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+                        ? Colors.white
+                        : Colors.black,
+                  ),
+                ),
+              );
+            },
           ),
         ),
-        if (_showCelebration) CelebrationOverlay(key: _celebrationKey, color: theme.colorScheme.primary),
+        if (_showCelebration)
+          DynamicAccentBuilder(
+            controller: context.watch<ThemeProvider>().accentController,
+            builder: (context, accent, _) => CelebrationOverlay(key: _celebrationKey, color: accent),
+          ),
       ],
     );
   }

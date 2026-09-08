@@ -2,26 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dynamic_accent.dart';
 
 class ThemeProvider extends ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   Color _seedColor = const Color(0xFF4ADE80);
+  AppVisualStyle _visualStyle = AppVisualStyle.staticColor;
+  late final DynamicAccentController accentController;
 
   ThemeMode get themeMode => _themeMode;
   Color get seedColor => _seedColor;
+  AppVisualStyle get visualStyle => _visualStyle;
+  bool get isMonochrome => _visualStyle == AppVisualStyle.monochrome;
+  bool get isRainbow => _visualStyle == AppVisualStyle.rainbow;
 
   static const List<Color> presetColors = [
-    Color(0xFF4ADE80),
-    Color(0xFF60A5FA),
-    Color(0xFFC084FC),
-    Color(0xFFF87171),
-    Color(0xFFFACC15),
-    Color(0xFF2DD4BF),
-    Color(0xFFFB923C),
-    Color(0xFFF472B6),
+    Color(0xFF4ADE80), // Verde esmeralda
+    Color(0xFF60A5FA), // Azul cielo
+    Color(0xFFC084FC), // Morado / Neón
+    Color(0xFFF87171), // Rojo coral
+    Color(0xFFFACC15), // Amarillo eléctrico
+    Color(0xFF2DD4BF), // Turquesa / Cian Tron
+    Color(0xFFFB923C), // Naranja neón
+    Color(0xFFF472B6), // Rosa cyber
   ];
 
   ThemeProvider() {
+    accentController = DynamicAccentController(
+      initialStyle: _visualStyle,
+      initialBaseColor: _seedColor,
+      isDark: _themeMode == ThemeMode.dark,
+    );
     _loadPrefs();
   }
 
@@ -29,21 +40,26 @@ class ThemeProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final modeIndex = prefs.getInt('theme_mode') ?? 2;
     final colorValue = prefs.getInt('seed_color');
+    final styleIndex = prefs.getInt('visual_style');
+
     _themeMode = ThemeMode.values[modeIndex];
     if (colorValue != null) _seedColor = Color(colorValue);
+
+    if (styleIndex != null && styleIndex >= 0 && styleIndex < AppVisualStyle.values.length) {
+      _visualStyle = AppVisualStyle.values[styleIndex];
+    }
+
+    accentController.setStyle(_visualStyle);
+    accentController.setBaseColor(_seedColor);
+    accentController.updateThemeBrightness(_themeMode == ThemeMode.dark);
     notifyListeners();
   }
 
-  
-  
   Future<void> setThemeMode(ThemeMode mode) async {
     _themeMode = mode;
-    notifyListeners();
-    // Lo aplicamos también de forma directa (no solo vía AnnotatedRegion),
-    // como refuerzo para que el cambio de color de las barras del sistema
-    // se note al toque en teléfonos donde el widget tree tarda en
-    // repintarse o donde el sistema es más terco (varios Samsung).
     final isDark = mode == ThemeMode.dark;
+    accentController.updateThemeBrightness(isDark);
+    notifyListeners();
     if (mode != ThemeMode.system) {
       SystemChrome.setSystemUIOverlayStyle(overlayStyleFor(isDark));
     }
@@ -51,13 +67,39 @@ class ThemeProvider extends ChangeNotifier {
     await prefs.setInt('theme_mode', mode.index);
   }
 
-
-  
   Future<void> setSeedColor(Color color) async {
     _seedColor = color;
+    // Si estaba en monocromo o rainbow, al seleccionar un color explícito activamos el estilo previo o estático
+    if (_visualStyle == AppVisualStyle.monochrome || _visualStyle == AppVisualStyle.rainbow) {
+      _visualStyle = AppVisualStyle.staticColor;
+      accentController.setStyle(AppVisualStyle.staticColor);
+    }
+    accentController.setBaseColor(color);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('seed_color', color.value);
+    await prefs.setInt('seed_color', color.toARGB32());
+    await prefs.setInt('visual_style', _visualStyle.index);
+  }
+
+  Future<void> setVisualStyle(AppVisualStyle style) async {
+    _visualStyle = style;
+    accentController.setStyle(style);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('visual_style', style.index);
+  }
+
+  Future<void> disableColor() async {
+    await setVisualStyle(AppVisualStyle.monochrome);
+  }
+
+  Color get effectivePrimaryColor {
+    if (_visualStyle == AppVisualStyle.monochrome) {
+      return _themeMode == ThemeMode.dark
+          ? DynamicAccentController.monoDark
+          : DynamicAccentController.monoLight;
+    }
+    return _seedColor;
   }
 
   // Fondo transparente + estilo de iconos EXPLÍCITO. Ojo: Colors.transparent
@@ -92,8 +134,8 @@ class ThemeProvider extends ChangeNotifier {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF000000),
         colorScheme: ColorScheme.dark(
-          primary: _seedColor,
-          secondary: _seedColor,
+          primary: effectivePrimaryColor,
+          secondary: effectivePrimaryColor,
           surface: const Color(0xFF0C0C0C),
         ),
         appBarTheme: const AppBarTheme(
@@ -109,8 +151,8 @@ class ThemeProvider extends ChangeNotifier {
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF7F9F7),
         colorScheme: ColorScheme.light(
-          primary: _seedColor,
-          secondary: _seedColor,
+          primary: effectivePrimaryColor,
+          secondary: effectivePrimaryColor,
           surface: Colors.white,
         ),
         appBarTheme: const AppBarTheme(
@@ -128,5 +170,11 @@ class ThemeProvider extends ChangeNotifier {
 
   List<Color> gradientColors(bool isDark) {
     return isDark ? [const Color(0xFF000000), const Color(0xFF0D0D0D)] : [const Color(0xFFF7F9F7), const Color(0xFFECF3ED)];
+  }
+
+  @override
+  void dispose() {
+    accentController.dispose();
+    super.dispose();
   }
 }

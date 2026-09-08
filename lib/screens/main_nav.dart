@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../theme/theme_provider.dart';
+import '../theme/dynamic_accent.dart';
 import 'home_screen.dart';
 import 'calendar_screen.dart';
 import 'profile_screen.dart';
@@ -45,16 +48,21 @@ class _MainNavState extends State<MainNav> {
           );
         }),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _onSelect,
-        backgroundColor: theme.colorScheme.surface,
-        indicatorColor: theme.colorScheme.primary.withOpacity(0.2),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.checklist), label: 'Hábitos'),
-          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Calendario'),
-          NavigationDestination(icon: Icon(Icons.person), label: 'Perfil'),
-        ],
+      bottomNavigationBar: DynamicAccentBuilder(
+        controller: context.watch<ThemeProvider>().accentController,
+        builder: (context, accent, glow) {
+          return NavigationBar(
+            selectedIndex: _index,
+            onDestinationSelected: _onSelect,
+            backgroundColor: theme.colorScheme.surface,
+            indicatorColor: accent.withOpacity(0.22),
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.checklist), label: 'Hábitos'),
+              NavigationDestination(icon: Icon(Icons.calendar_month), label: 'Calendario'),
+              NavigationDestination(icon: Icon(Icons.person), label: 'Perfil'),
+            ],
+          );
+        },
       ),
     );
   }

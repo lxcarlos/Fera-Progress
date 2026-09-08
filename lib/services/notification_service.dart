@@ -21,9 +21,59 @@ class NotificationService {
 
   static const _prefKeyMinutesBefore = 'notif_minutes_before';
 
+  void _configureLocalTimeZone() {
+    tz_data.initializeTimeZones();
+    final now = DateTime.now();
+    final offsetMs = now.timeZoneOffset.inMilliseconds;
+
+    final sysName = now.timeZoneName.trim();
+    if (sysName.contains('/')) {
+      try {
+        tz.setLocalLocation(tz.getLocation(sysName));
+        return;
+      } catch (_) {}
+    }
+
+    final preferredByOffset = <int, List<String>>{
+      -21600000: ['America/Mexico_City', 'America/Guatemala', 'America/Costa_Rica'], // UTC-6
+      -18000000: ['America/Bogota', 'America/Lima', 'America/New_York', 'America/Panama'], // UTC-5
+      -14400000: ['America/Caracas', 'America/Santiago', 'America/La_Paz'], // UTC-4
+      -10800000: ['America/Argentina/Buenos_Aires', 'America/Montevideo', 'America/Sao_Paulo'], // UTC-3
+      0: ['UTC', 'Europe/London'],
+      3600000: ['Europe/Madrid', 'Europe/Paris'], // UTC+1
+      7200000: ['Europe/Madrid', 'Europe/Athens'], // UTC+2
+      -25200000: ['America/Hermosillo', 'America/Mazatlan', 'America/Denver'], // UTC-7
+      -28800000: ['America/Tijuana', 'America/Los_Angeles'], // UTC-8
+    };
+
+    final preferred = preferredByOffset[offsetMs];
+    if (preferred != null) {
+      for (final name in preferred) {
+        try {
+          tz.setLocalLocation(tz.getLocation(name));
+          return;
+        } catch (_) {}
+      }
+    }
+
+    for (final loc in tz.timeZoneDatabase.locations.values) {
+      if (loc.currentTimeZone.offset == offsetMs) {
+        tz.setLocalLocation(loc);
+        return;
+      }
+    }
+  }
+
+  void _ensureTimeZone() {
+    final offsetMs = DateTime.now().timeZoneOffset.inMilliseconds;
+    if (tz.local.name == 'UTC' && offsetMs != 0) {
+      _configureLocalTimeZone();
+    }
+  }
+
   Future<void> init() async {
     if (_initialized) return;
-    tz_data.initializeTimeZones();
+    _configureLocalTimeZone();
 
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
@@ -36,6 +86,9 @@ class NotificationService {
     await androidPlugin?.requestExactAlarmsPermission();
 
     _initialized = true;
+
+    // Reprogramar con la zona horaria local correcta y limpiar notificaciones desfasadas
+    await rescheduleAll();
   }
 
   /// Minutos antes del límite en que avisa. -1 = notificaciones apagadas.
@@ -51,8 +104,11 @@ class NotificationService {
   }
 
   /// Vuelve a agendar las notificaciones de todos los hábitos, tareas y eventos
-  /// con horario, usando la preferencia actual de minutos antes.
+  /// con horario, usando la preferencia actual de minutos antes y la zona horaria del dispositivo.
   Future<void> rescheduleAll() async {
+    _ensureTimeZone();
+    await _plugin.cancelAll();
+
     final habits = await DBHelper().getAllHabits();
     for (final habit in habits) {
       if (habit.isTask) {
@@ -79,6 +135,7 @@ class NotificationService {
   // ==============================
   Future<void> scheduleForHabit(Habit habit) async {
     if (habit.id == null) return;
+    _ensureTimeZone();
 
     final minutesBefore = await getMinutesBefore();
     if (habit.timeLimit == null || habit.isPaused || habit.isTask || minutesBefore < 0) {
@@ -97,7 +154,7 @@ class NotificationService {
       scheduled = scheduled.add(const Duration(days: 1));
     }
 
-    final title = 'Hábito: ${habit.name}';
+    final title = '🔥 Hábito: ${habit.name}';
     final body = minutesBefore == 0
         ? 'Hora de cumplir: "${habit.name}"'
         : 'Faltan $minutesBefore min para tu hábito (${habit.timeLimit})';
@@ -134,6 +191,7 @@ class NotificationService {
   // ==============================
   Future<void> scheduleForTask(Habit task) async {
     if (task.id == null || !task.isTask) return;
+    _ensureTimeZone();
 
     final minutesBefore = await getMinutesBefore();
     if (minutesBefore < 0) {
@@ -159,7 +217,7 @@ class NotificationService {
       return;
     }
 
-    final title = 'Tarea: ${task.name}';
+    final title = '✅ Tarea: ${task.name}';
     final body = minutesBefore == 0
         ? 'Es momento de tu tarea: "${task.name}"'
         : 'Tu tarea "${task.name}" vence en $minutesBefore min';
@@ -195,6 +253,7 @@ class NotificationService {
   // ==============================
   Future<void> scheduleForEvent(CalendarEvent event) async {
     if (event.id == null) return;
+    _ensureTimeZone();
 
     final minutesBefore = await getMinutesBefore();
     if (minutesBefore < 0) {
@@ -217,7 +276,7 @@ class NotificationService {
     );
     const notifDetails = NotificationDetails(android: androidDetails, iOS: DarwinNotificationDetails());
 
-    final title = 'Evento: ${event.title}';
+    final title = '📅 Evento: ${event.title}';
 
     if (!event.isRecurring) {
       final eventDate = event.date;
@@ -248,6 +307,10 @@ class NotificationService {
             .subtract(Duration(minutes: minutesBefore));
         while (scheduled.weekday != weekday || scheduled.isBefore(now)) {
           scheduled = scheduled.add(const Duration(days: 1));
+        }
+
+        if (event.repeatUntil != null && scheduled.isAfter(event.repeatUntil!)) {
+          continue;
         }
 
         final body = minutesBefore == 0

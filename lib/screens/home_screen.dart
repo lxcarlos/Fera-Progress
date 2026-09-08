@@ -1114,13 +1114,13 @@ class _GlassCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: habit.isPaused
                     ? (isDark ? Colors.white.withOpacity(0.04) : Colors.black.withOpacity(0.03))
-                    : itemColor.withOpacity(isCompletedToday ? 0.12 : 0.22),
-                borderRadius: BorderRadius.circular(12),
+                    : itemColor.withOpacity(isCompletedToday ? 0.10 : 0.18),
+                borderRadius: BorderRadius.circular(kCardRadius),
                 border: Border.all(
                   color: habit.isPaused
                       ? (isDark ? Colors.white.withOpacity(0.12) : Colors.black.withOpacity(0.08))
-                      : itemColor.withOpacity(isCompletedToday ? 0.35 : 0.6),
-                  width: 1.0,
+                      : itemColor.withOpacity(isCompletedToday ? 0.35 : 0.60),
+                  width: 1.2,
                 ),
               ),
               child: Row(

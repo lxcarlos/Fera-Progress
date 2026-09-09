@@ -14,15 +14,29 @@ void main() async {
   // teléfonos ignoran lo que le mandamos abajo y usan su propio criterio.
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await CalendarZoom.init();
-  await DBHelper().processMissedDays();
-  await DBHelper().cleanupExpired();
-  await NotificationService().init();
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => ThemeProvider(),
       child: const MyApp(),
     ),
   );
+
+  // Inicialización en segundo plano: permite que la pantalla de carga desaparezca
+  // casi al instante (<150ms) sin bloquear el primer frame del usuario.
+  _initBackgroundServices();
+}
+
+void _initBackgroundServices() {
+  Future.microtask(() async {
+    try {
+      await DBHelper().processMissedDays();
+      await DBHelper().cleanupExpired();
+      await NotificationService().init();
+    } catch (e, st) {
+      debugPrint('Error en servicios de segundo plano: $e\n$st');
+    }
+  });
 }
 
 class MyApp extends StatefulWidget {

@@ -45,8 +45,6 @@ class _YearViewState extends State<YearView> {
     });
   }
 
-  String _key(DateTime d) => d.toIso8601String().split('T')[0];
-
   /// "298/365": qué tan avanzado va el año, contando desde el 1 de enero
   /// hasta hoy. Solo tiene sentido mostrarlo para el año actual.
   String? _yearProgressLabel() {

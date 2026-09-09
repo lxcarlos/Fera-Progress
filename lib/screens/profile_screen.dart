@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/habit.dart';
 import '../database/db_helper.dart';
 import '../constants/categories.dart';
 import '../utils/color_utils.dart';
@@ -83,7 +84,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final penalty = results[6] as int;
     final counts = results[7] as Map<String, int>;
 
-    final rawTotal = habits.where((h) => !h.isTask).fold(0, (sum, h) => sum + h.points) + extraTotal;
+    final rawTotal = habits.where((h) => !h.isTask).fold<int>(0, (sum, h) => sum + h.points) + extraTotal;
     final finalTotal = (rawTotal - penalty) < 0 ? 0 : rawTotal - penalty;
 
     setState(() {

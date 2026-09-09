@@ -384,41 +384,78 @@ class DBHelper {
     final habits = await getAllHabits();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final earliestGlobal = today.subtract(const Duration(days: 30));
+    final batch = db.batch();
+    bool hasChanges = false;
 
     for (final habit in habits) {
       if (habit.isPaused || habit.isTask || habit.id == null) continue;
 
       DateTime cursor = DateTime(habit.createdAt.year, habit.createdAt.month, habit.createdAt.day);
-      final earliestCheck = today.subtract(const Duration(days: 30));
-      if (cursor.isBefore(earliestCheck)) cursor = earliestCheck;
+      if (cursor.isBefore(earliestGlobal)) cursor = earliestGlobal;
+      if (!cursor.isBefore(today)) continue;
+
+      final startStr = cursor.toIso8601String().split('T')[0];
+      final todayStr = today.toIso8601String().split('T')[0];
+
+      // 1 sola consulta por hábito para todo el rango en lugar de un query diario individual
+      final existingRows = await db.query(
+        'habit_records',
+        columns: ['date'],
+        where: 'habitId = ? AND date >= ? AND date < ?',
+        whereArgs: [habit.id, startStr, todayStr],
+      );
+      final existingDates = existingRows.map((r) => r['date'] as String).toSet();
 
       while (cursor.isBefore(today)) {
         final dateStr = cursor.toIso8601String().split('T')[0];
-        final existing = await db.query('habit_records', where: 'habitId = ? AND date = ?', whereArgs: [habit.id, dateStr]);
-
-        if (existing.isEmpty) {
-          await db.insert('habit_records', {'habitId': habit.id, 'date': dateStr, 'completed': 0, 'completedAt': null});
+        if (!existingDates.contains(dateStr)) {
+          batch.insert('habit_records', {
+            'habitId': habit.id,
+            'date': dateStr,
+            'completed': 0,
+            'completedAt': null,
+          });
+          hasChanges = true;
         }
         cursor = cursor.add(const Duration(days: 1));
       }
     }
 
+    if (hasChanges) {
+      await batch.commit(noResult: true);
+    }
+
     // Regla de inactividad de puntos: si pasan más de 3 días consecutivos
     // sin completar ningún hábito, a partir del 4º día se descuenta 1 punto
     // del acumulado general del perfil por cada día inactivo adicional.
-    await _applyInactivityPenalty(today);
+    final penaltyChanged = await _applyInactivityPenalty(today);
+    if (hasChanges || penaltyChanged) {
+      AppEvents.notifyDataChanged();
+    }
   }
 
-  Future<void> _applyInactivityPenalty(DateTime today) async {
+  Future<bool> _applyInactivityPenalty(DateTime today) async {
     final db = await database;
     final prefs = await SharedPreferences.getInstance();
 
     final earliest = await getEarliestHabitDate();
-    if (earliest == null) return;
+    if (earliest == null) return false;
 
     DateTime start = DateTime(earliest.year, earliest.month, earliest.day);
     final maxBack = today.subtract(const Duration(days: 60));
     if (start.isBefore(maxBack)) start = maxBack;
+    if (!start.isBefore(today)) return false;
+
+    final startStr = start.toIso8601String().split('T')[0];
+    final todayStr = today.toIso8601String().split('T')[0];
+
+    // Consulta única agrupada para todos los días activos en vez de 60 consultas individuales
+    final activeRows = await db.rawQuery(
+      'SELECT DISTINCT date FROM habit_records WHERE date >= ? AND date < ? AND completed = 1',
+      [startStr, todayStr],
+    );
+    final activeDates = activeRows.map((r) => r['date'] as String).toSet();
 
     int consecutiveInactiveDays = 0;
     int totalPenalty = 0;
@@ -426,13 +463,7 @@ class DBHelper {
     DateTime cursor = start;
     while (cursor.isBefore(today)) {
       final dateStr = cursor.toIso8601String().split('T')[0];
-      final res = await db.rawQuery(
-        'SELECT COUNT(*) as count FROM habit_records WHERE date = ? AND completed = 1',
-        [dateStr],
-      );
-      final completedCount = (res.first['count'] as int?) ?? 0;
-
-      if (completedCount > 0) {
+      if (activeDates.contains(dateStr)) {
         consecutiveInactiveDays = 0;
       } else {
         consecutiveInactiveDays++;
@@ -443,7 +474,12 @@ class DBHelper {
       cursor = cursor.add(const Duration(days: 1));
     }
 
-    await prefs.setInt('inactivity_penalty_points', totalPenalty);
+    final currentPenalty = prefs.getInt('inactivity_penalty_points') ?? 0;
+    if (currentPenalty != totalPenalty) {
+      await prefs.setInt('inactivity_penalty_points', totalPenalty);
+      return true;
+    }
+    return false;
   }
 
   Future<int> getInactivityPenalty() async {
@@ -455,23 +491,27 @@ class DBHelper {
     final db = await database;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final todayStr = today.toIso8601String().split('T')[0];
 
-    final extras = await db.query('extra_activities');
+    final extras = await db.query(
+      'extra_activities',
+      where: 'date < ?',
+      whereArgs: [todayStr],
+    );
+    if (extras.isEmpty) return;
+
     int pointsToBank = 0;
     final List<int> extraIdsToDelete = [];
     for (final e in extras) {
-      final d = DateTime.parse(e['date'] as String);
-      final dDay = DateTime(d.year, d.month, d.day);
-      if (dDay.isBefore(today)) {
-        pointsToBank += (e['points'] as int);
-        extraIdsToDelete.add(e['id'] as int);
-      }
+      pointsToBank += (e['points'] as int);
+      extraIdsToDelete.add(e['id'] as int);
     }
     if (extraIdsToDelete.isNotEmpty) {
       final prefs = await SharedPreferences.getInstance();
       final currentBank = prefs.getInt('banked_extra_points') ?? 0;
       await prefs.setInt('banked_extra_points', currentBank + pointsToBank);
       await db.delete('extra_activities', where: 'id IN (${extraIdsToDelete.join(',')})');
+      AppEvents.notifyDataChanged();
     }
     // Las tareas (isTask = 1) ahora persisten indefinidamente para que el usuario
     // pueda revisar cualquier día pasado y ver cuáles se cumplieron y cuáles no.

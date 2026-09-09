@@ -91,13 +91,18 @@ class NotificationService {
     await rescheduleAll();
   }
 
+  int? _cachedMinutesBefore;
+
   /// Minutos antes del límite en que avisa. -1 = notificaciones apagadas.
   Future<int> getMinutesBefore() async {
+    if (_cachedMinutesBefore != null) return _cachedMinutesBefore!;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_prefKeyMinutesBefore) ?? 15;
+    _cachedMinutesBefore = prefs.getInt(_prefKeyMinutesBefore) ?? 15;
+    return _cachedMinutesBefore!;
   }
 
   Future<void> setMinutesBefore(int minutes) async {
+    _cachedMinutesBefore = minutes;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefKeyMinutesBefore, minutes);
     await rescheduleAll();
@@ -108,6 +113,9 @@ class NotificationService {
   Future<void> rescheduleAll() async {
     _ensureTimeZone();
     await _plugin.cancelAll();
+
+    final minutesBefore = await getMinutesBefore();
+    if (minutesBefore < 0) return; // Si están desactivadas, no agendamos nada
 
     final habits = await DBHelper().getAllHabits();
     for (final habit in habits) {

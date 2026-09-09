@@ -106,11 +106,12 @@ class _DayAgendaState extends State<DayAgenda> {
   }
 
   Future<void> _load() async {
-    final events = await _dbHelper.getEventsForDate(widget.date);
-    final Map<int, bool> completion = {};
-    for (final e in events) {
-      if (e.id != null) completion[e.id!] = await _dbHelper.getEventCompletion(e.id!, widget.date);
-    }
+    final results = await Future.wait([
+      _dbHelper.getEventsForDate(widget.date),
+      _dbHelper.getAllEventCompletionsForDate(widget.date),
+    ]);
+    final events = results[0] as List<CalendarEvent>;
+    final completion = results[1] as Map<int, bool>;
     if (!mounted) return;
     setState(() {
       _events = events;
@@ -252,6 +253,7 @@ class _DayAgendaState extends State<DayAgenda> {
     required BuildContext context,
     required CalendarEvent event,
     required double height,
+    required double width,
     required Color color,
     required bool completed,
     required ThemeData theme,
@@ -263,10 +265,13 @@ class _DayAgendaState extends State<DayAgenda> {
       return const SizedBox.shrink();
     }
 
-    final showIcon = height >= 30;
-    final showSubtitle = height >= 46;
-    final showCheck = height >= 24;
-    final titleFontSize = height < 24 ? 10.0 : 12.0;
+    final isVeryNarrow = width < 55;
+    final isNarrow = width < 85;
+
+    final showIcon = height >= 30 && !isNarrow;
+    final showSubtitle = height >= 46 && !isNarrow;
+    final showCheck = height >= 24 && !isVeryNarrow;
+    final titleFontSize = (height < 24 || isNarrow) ? 9.5 : 12.0;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -363,16 +368,18 @@ class _DayAgendaState extends State<DayAgenda> {
                           final areaWidth = constraints.maxWidth;
                           return Stack(
                             children: [
-                              Column(
-                                children: List.generate(
-                                  24,
-                                  (h) => GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => _openEventDialog(presetTime: TimeOfDay(hour: h, minute: 0)),
-                                    child: Container(
-                                      height: _hourHeight,
-                                      decoration: BoxDecoration(
-                                        border: Border(top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06))),
+                              RepaintBoundary(
+                                child: Column(
+                                  children: List.generate(
+                                    24,
+                                    (h) => GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () => _openEventDialog(presetTime: TimeOfDay(hour: h, minute: 0)),
+                                      child: Container(
+                                        height: _hourHeight,
+                                        decoration: BoxDecoration(
+                                          border: Border(top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06))),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -451,7 +458,7 @@ class _DayAgendaState extends State<DayAgenda> {
                                     },
                                     child: Container(
                                       clipBehavior: Clip.hardEdge,
-                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: vPad),
+                                      padding: EdgeInsets.symmetric(horizontal: slotWidth < 65 ? 3 : 7, vertical: vPad),
                                       decoration: BoxDecoration(
                                         color: color.withOpacity(completed ? 0.12 : (isDragging ? 0.34 : 0.22)),
                                         borderRadius: BorderRadius.circular(10),
@@ -475,6 +482,7 @@ class _DayAgendaState extends State<DayAgenda> {
                                                 context: context,
                                                 event: event,
                                                 height: height,
+                                                width: slotWidth,
                                                 color: color,
                                                 completed: completed,
                                                 theme: theme,

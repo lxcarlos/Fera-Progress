@@ -125,17 +125,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadAll() async {
-    final habits = await _dbHelper.getAllHabits();
-    final extras = _isToday ? await _dbHelper.getRecentExtraActivities(limit: 5) : <Map<String, dynamic>>[];
+    final results = await Future.wait([
+      _dbHelper.getAllHabits(),
+      _isToday ? _dbHelper.getRecentExtraActivities(limit: 5) : Future.value(<Map<String, dynamic>>[]),
+      _dbHelper.getAllRecordsForDate(_selectedDate),
+      _dbHelper.getHabitsStatusForDate(DateTime.now()),
+    ]);
 
-    final Map<int, Map<String, dynamic>?> records = {};
-    for (final h in habits) {
-      if (h.id != null) {
-        records[h.id!] = await _dbHelper.getRecordForDate(h.id!, _selectedDate);
-      }
-    }
+    final habits = results[0] as List<Habit>;
+    final extras = results[1] as List<Map<String, dynamic>>;
+    final records = results[2] as Map<int, Map<String, dynamic>>;
+    final todayStatus = results[3] as List<Map<String, dynamic>>;
 
-    final todayStatus = await _dbHelper.getHabitsStatusForDate(DateTime.now());
     final todayHabitsOnly = todayStatus.where((h) => h['isTask'] != true).toList();
     final todayPercent = todayHabitsOnly.isEmpty ? 0.0 : todayHabitsOnly.where((h) => h['completed'] == true).length / todayHabitsOnly.length;
 

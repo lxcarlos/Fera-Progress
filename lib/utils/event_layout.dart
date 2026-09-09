@@ -24,10 +24,8 @@ class PositionedEvent {
 }
 
 /// Máximo de eventos que se muestran lado a lado cuando varios caen en el
-/// mismo horario. La app ya evita crear un 4º evento encimado (ver
-/// countOverlappingEvents/_confirmOverlapIfNeeded), así que esto es sobre
-/// todo una red de seguridad visual para datos existentes.
-const int kMaxEventColumns = 3;
+/// mismo horario. Se admiten 5 o más eventos encimados simultáneamente.
+const int kMaxEventColumns = 6;
 
 int _startMin(CalendarEvent e) {
   final p = e.startTime.split(':');

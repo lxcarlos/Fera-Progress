@@ -119,18 +119,15 @@ class _WeekViewState extends State<WeekView> {
   String _dateKey(DateTime d) => d.toIso8601String().split('T')[0];
 
   Future<void> _load() async {
-    final Map<int, List<CalendarEvent>> byDay = {};
-    final Map<String, bool> completion = {};
-    for (int i = 0; i < 7; i++) {
-      final day = _weekStart.add(Duration(days: i));
-      final events = await _dbHelper.getEventsForDate(day);
-      byDay[i] = events;
-      for (final e in events) {
-        if (e.id != null) {
-          completion['${e.id}_${_dateKey(day)}'] = await _dbHelper.getEventCompletion(e.id!, day);
-        }
-      }
-    }
+    final days = List.generate(7, (i) => _weekStart.add(Duration(days: i)));
+    final results = await Future.wait([
+      _dbHelper.getEventsForDays(days),
+      _dbHelper.getWeekEventCompletions(_weekStart, _weekStart.add(const Duration(days: 6))),
+    ]);
+
+    final byDay = results[0] as Map<int, List<CalendarEvent>>;
+    final completion = results[1] as Map<String, bool>;
+
     if (!mounted) return;
     setState(() {
       _eventsByDayIndex = byDay;
@@ -380,18 +377,20 @@ class _WeekViewState extends State<WeekView> {
                                 height: 24 * hourHeight,
                                 child: Stack(
                                   children: [
-                                    Column(
-                                      children: List.generate(
-                                        24,
-                                        (h) => GestureDetector(
-                                          behavior: HitTestBehavior.opaque,
-                                          onTap: () => _openDialog(day, presetTime: TimeOfDay(hour: h, minute: 0)),
-                                          child: Container(
-                                            height: hourHeight,
-                                            decoration: BoxDecoration(
-                                              border: Border(
-                                                top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06)),
-                                                left: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.05)),
+                                    RepaintBoundary(
+                                      child: Column(
+                                        children: List.generate(
+                                          24,
+                                          (h) => GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () => _openDialog(day, presetTime: TimeOfDay(hour: h, minute: 0)),
+                                            child: Container(
+                                              height: hourHeight,
+                                              decoration: BoxDecoration(
+                                                border: Border(
+                                                  top: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.06)),
+                                                  left: BorderSide(color: theme.colorScheme.onSurface.withOpacity(0.05)),
+                                                ),
                                               ),
                                             ),
                                           ),

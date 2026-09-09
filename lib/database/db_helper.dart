@@ -28,6 +28,14 @@ class DBHelper {
       onConfigure: (db) async => await db.execute('PRAGMA foreign_keys = ON;'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
+      onOpen: (db) async {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_habit_records_date ON habit_records(date)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_habit_records_habit_date ON habit_records(habitId, date)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_event_records_date ON event_records(date)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_event_records_event_date ON event_records(eventId, date)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_event_exceptions_event ON event_exceptions(eventId)');
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_event_habit_links_event ON event_habit_links(eventId)');
+      },
     );
   }
 
@@ -315,6 +323,22 @@ class DBHelper {
     final dateStr = date.toIso8601String().split('T')[0];
     final result = await db.query('habit_records', where: 'habitId = ? AND date = ?', whereArgs: [habitId, dateStr]);
     return result.isNotEmpty ? result.first : null;
+  }
+
+  /// Obtiene todos los habit_records de una fecha dada en una sola consulta.
+  /// Evita realizar decenas de consultas SQLite en bucle, aumentando la velocidad de carga.
+  Future<Map<int, Map<String, dynamic>>> getAllRecordsForDate(DateTime date) async {
+    final db = await database;
+    final dateStr = date.toIso8601String().split('T')[0];
+    final results = await db.query('habit_records', where: 'date = ?', whereArgs: [dateStr]);
+    final map = <int, Map<String, dynamic>>{};
+    for (final r in results) {
+      final hid = r['habitId'] as int?;
+      if (hid != null) {
+        map[hid] = r;
+      }
+    }
+    return map;
   }
 
   Future<List<Map<String, dynamic>>> getRecordsForHabit(int habitId) async {
@@ -807,27 +831,87 @@ class DBHelper {
     return rows.map((r) => r['habitId'] as int).toList();
   }
 
-  Future<Set<String>> _getExceptionDates(int eventId) async {
+  Future<Map<int, Set<String>>> _getAllExceptionDates() async {
     final db = await database;
-    final rows = await db.query('event_exceptions', where: 'eventId = ?', whereArgs: [eventId], columns: ['date']);
-    return rows.map((r) => r['date'] as String).toSet();
+    final rows = await db.query('event_exceptions');
+    final map = <int, Set<String>>{};
+    for (final r in rows) {
+      final eid = r['eventId'] as int;
+      final d = r['date'] as String;
+      map.putIfAbsent(eid, () => <String>{}).add(d);
+    }
+    return map;
+  }
+
+  Future<Map<int, List<int>>> _getAllLinkedHabits() async {
+    final db = await database;
+    final rows = await db.query('event_habit_links');
+    final map = <int, List<int>>{};
+    for (final r in rows) {
+      final eid = r['eventId'] as int;
+      final hid = r['habitId'] as int;
+      map.putIfAbsent(eid, () => <int>[]).add(hid);
+    }
+    return map;
   }
 
   Future<List<CalendarEvent>> getEventsForDate(DateTime date) async {
     final db = await database;
     final rawEvents = await db.query('calendar_events');
+    if (rawEvents.isEmpty) return const [];
+
+    final exceptionsMap = await _getAllExceptionDates();
+    final linksMap = await _getAllLinkedHabits();
 
     final List<CalendarEvent> result = [];
     for (final map in rawEvents) {
       var event = CalendarEvent.fromMap(map);
-      final exceptionDates = event.isRecurring ? await _getExceptionDates(event.id!) : const <String>{};
+      final exceptionDates = event.isRecurring ? (exceptionsMap[event.id] ?? const <String>{}) : const <String>{};
       if (!eventOccursOnDate(event, date, exceptionDates: exceptionDates)) continue;
 
-      final links = await getLinkedHabitIds(event.id!);
+      final links = linksMap[event.id] ?? const <int>[];
       event = event.copyWith(linkedHabitIds: links);
       result.add(event);
     }
     result.sort((a, b) => a.startTime.compareTo(b.startTime));
+    return result;
+  }
+
+  /// Carga los eventos para una lista de días (por ejemplo los 7 días de la semana)
+  /// en una sola pasada a la base de datos, en vez de hacer 7 llamadas independientes.
+  Future<Map<int, List<CalendarEvent>>> getEventsForDays(List<DateTime> days) async {
+    final db = await database;
+    final rawEvents = await db.query('calendar_events');
+    if (rawEvents.isEmpty) {
+      return {for (int i = 0; i < days.length; i++) i: <CalendarEvent>[]};
+    }
+
+    final exceptionsMap = await _getAllExceptionDates();
+    final linksMap = await _getAllLinkedHabits();
+
+    final parsedEvents = rawEvents.map((map) {
+      var ev = CalendarEvent.fromMap(map);
+      final links = linksMap[ev.id] ?? const <int>[];
+      return ev.copyWith(linkedHabitIds: links);
+    }).toList();
+
+    final Map<int, List<CalendarEvent>> result = {
+      for (int i = 0; i < days.length; i++) i: <CalendarEvent>[]
+    };
+
+    for (int i = 0; i < days.length; i++) {
+      final day = days[i];
+      final dayList = <CalendarEvent>[];
+      for (final event in parsedEvents) {
+        final exceptionDates = event.isRecurring ? (exceptionsMap[event.id] ?? const <String>{}) : const <String>{};
+        if (eventOccursOnDate(event, day, exceptionDates: exceptionDates)) {
+          dayList.add(event);
+        }
+      }
+      dayList.sort((a, b) => a.startTime.compareTo(b.startTime));
+      result[i] = dayList;
+    }
+
     return result;
   }
 
@@ -836,6 +920,43 @@ class DBHelper {
     final dateStr = date.toIso8601String().split('T')[0];
     final result = await db.query('event_records', where: 'eventId = ? AND date = ?', whereArgs: [eventId, dateStr]);
     return result.isNotEmpty && result.first['completed'] == 1;
+  }
+
+  /// Obtiene todos los estados de completado de eventos para una fecha dada en 1 sola consulta.
+  Future<Map<int, bool>> getAllEventCompletionsForDate(DateTime date) async {
+    final db = await database;
+    final dateStr = date.toIso8601String().split('T')[0];
+    final results = await db.query('event_records', where: 'date = ?', whereArgs: [dateStr]);
+    final map = <int, bool>{};
+    for (final r in results) {
+      final eid = r['eventId'] as int?;
+      if (eid != null) {
+        map[eid] = (r['completed'] as int? ?? 0) == 1;
+      }
+    }
+    return map;
+  }
+
+  /// Obtiene todos los completados de eventos en un rango de fechas (ej. toda la semana)
+  /// en 1 sola consulta a SQLite. Clave del mapa: "${eventId}_${dateStr}"
+  Future<Map<String, bool>> getWeekEventCompletions(DateTime start, DateTime end) async {
+    final db = await database;
+    final startStr = start.toIso8601String().split('T')[0];
+    final endStr = end.toIso8601String().split('T')[0];
+    final results = await db.query(
+      'event_records',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [startStr, endStr],
+    );
+    final map = <String, bool>{};
+    for (final r in results) {
+      final eid = r['eventId'] as int?;
+      final d = r['date'] as String?;
+      if (eid != null && d != null) {
+        map['${eid}_$d'] = (r['completed'] as int? ?? 0) == 1;
+      }
+    }
+    return map;
   }
 
   Future<void> setEventCompletion(int eventId, DateTime date, bool completed) async {

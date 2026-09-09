@@ -63,14 +63,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final habits = await _dbHelper.getAllHabits();
-    final categoryPoints = await _dbHelper.getPointsByCategory();
-    final maxStreak = await _dbHelper.getMaxStreak();
-    final totalCompletions = await _dbHelper.getTotalCompletions();
-    final extraTotal = await _dbHelper.getExtraActivitiesTotalPoints();
-    final penalty = await _dbHelper.getInactivityPenalty();
-    final counts = await _dbHelper.getCompletionCountsByYear(DateTime.now().year);
+    final results = await Future.wait([
+      SharedPreferences.getInstance(),
+      _dbHelper.getAllHabits(),
+      _dbHelper.getPointsByCategory(),
+      _dbHelper.getMaxStreak(),
+      _dbHelper.getTotalCompletions(),
+      _dbHelper.getExtraActivitiesTotalPoints(),
+      _dbHelper.getInactivityPenalty(),
+      _dbHelper.getCompletionCountsByYear(DateTime.now().year),
+    ]);
+
+    final prefs = results[0] as SharedPreferences;
+    final habits = results[1] as List<Habit>;
+    final categoryPoints = results[2] as Map<String, int>;
+    final maxStreak = results[3] as int;
+    final totalCompletions = results[4] as int;
+    final extraTotal = results[5] as int;
+    final penalty = results[6] as int;
+    final counts = results[7] as Map<String, int>;
 
     final rawTotal = habits.where((h) => !h.isTask).fold(0, (sum, h) => sum + h.points) + extraTotal;
     final finalTotal = (rawTotal - penalty) < 0 ? 0 : rawTotal - penalty;

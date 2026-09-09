@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/calendar_event.dart';
-import '../models/habit.dart';
 import '../services/notification_service.dart';
 
 import '../constants/categories.dart';
@@ -193,23 +192,24 @@ Future<bool> _confirmOverlapIfNeeded(
   int? excludeEventId,
 }) async {
   final overlapping = await dbHelper.countOverlappingEvents(date, startTime, endTime, excludeEventId: excludeEventId);
-  if (overlapping < 3) return true;
+  if (overlapping < 6) return true;
   if (!context.mounted) return false;
-  await showDialog(
+  final proceed = await showDialog<bool>(
     context: context,
     builder: (context) => GlassDialog(
-      title: const Text('Demasiados eventos a la misma hora'),
-      content: const Text(
-        'Ya hay 3 eventos en este horario y no se pueden mostrar más al mismo tiempo en el calendario. '
-        'Agrega esta actividad dentro de la descripción de uno de los eventos existentes, en vez de crear uno nuevo.',
-        style: TextStyle(fontSize: 13),
+      title: const Text('Múltiples eventos a la misma hora'),
+      content: Text(
+        'Ya hay $overlapping eventos en este horario. Las columnas en el calendario se acomodarán más estrechas. '
+        '¿Deseas agregar este evento de todos modos?',
+        style: const TextStyle(fontSize: 13),
       ),
       actions: [
-        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido')),
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Agregar de todos modos')),
       ],
     ),
   );
-  return false;
+  return proceed ?? false;
 }
 
 /// Abre el formulario de creación/edición de un evento de calendario.

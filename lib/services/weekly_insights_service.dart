@@ -1,9 +1,16 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart' as sqflite;
 import '../database/db_helper.dart';
 import '../models/habit.dart';
 import '../models/weekly_insights_data.dart';
 import '../utils/date_utils.dart';
+
+DateTime weekStartFor(DateTime d) {
+  final date = dateOnly(d);
+  final diff = (date.weekday - 1); // Lunes como inicio de semana
+  return date.subtract(Duration(days: diff));
+}
 
 class WeeklyInsightsService {
   static final WeeklyInsightsService _instance = WeeklyInsightsService._internal();
@@ -109,22 +116,22 @@ class WeeklyInsightsService {
     final sixMonthsAgo = startOfWeek.subtract(const Duration(days: 180)).toIso8601String().split('T')[0];
     final yearAgo = startOfWeek.subtract(const Duration(days: 365)).toIso8601String().split('T')[0];
 
-    final monthCount = Sqflite.firstIntValue(await db.rawQuery(
+    final monthCount = sqflite.firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [monthAgo],
     )) ?? 0;
 
-    final threeMonthsCount = Sqflite.firstIntValue(await db.rawQuery(
+    final threeMonthsCount = sqflite.firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [threeMonthsAgo],
     )) ?? 0;
 
-    final sixMonthsCount = Sqflite.firstIntValue(await db.rawQuery(
+    final sixMonthsCount = sqflite.firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [sixMonthsAgo],
     )) ?? 0;
 
-    final yearCount = Sqflite.firstIntValue(await db.rawQuery(
+    final yearCount = sqflite.firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [yearAgo],
     )) ?? 0;

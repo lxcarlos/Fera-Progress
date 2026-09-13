@@ -130,6 +130,8 @@ class NotificationService {
     for (final event in events) {
       await scheduleForEvent(event);
     }
+
+    await scheduleWeeklyInsightsNotifications();
   }
 
   // ---- IDs no colisionables ----
@@ -345,5 +347,60 @@ class NotificationService {
     for (int w = 1; w <= 7; w++) {
       await _plugin.cancel(_recurringEventIdFor(eventId, w));
     }
+  }
+
+  // ==============================
+  // 4. INSIGHTS SEMANALES (DOMINGOS 10:00 AM Y 8:00 PM)
+  // ==============================
+  static const int _weeklyMorningId = 900001;
+  static const int _weeklyEveningId = 900002;
+
+  Future<void> scheduleWeeklyInsightsNotifications() async {
+    _ensureTimeZone();
+
+    const notifDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'weekly_insights',
+        'Insights Semanales',
+        channelDescription: 'Avisos de historias de progreso de los domingos',
+        importance: Importance.high,
+        priority: Priority.high,
+        color: Color(0xFFC084FC),
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
+
+    final morningSchedule = _nextInstanceOfWeekdayTime(DateTime.sunday, 10, 0);
+    await _plugin.zonedSchedule(
+      _weeklyMorningId,
+      '✨ Tus Insights Semanales están listos',
+      'Descubre tu ritmo, tus picos de disciplina y tu hábito MVP de la semana.',
+      morningSchedule,
+      notifDetails,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+
+    final eveningSchedule = _nextInstanceOfWeekdayTime(DateTime.sunday, 20, 0);
+    await _plugin.zonedSchedule(
+      _weeklyEveningId,
+      '🌙 Cierre de semana: Prepara tu lunes',
+      'Revisa cómo cerró tu semana y prepárate con tu micro-meta para mañana.',
+      eveningSchedule,
+      notifDetails,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+    );
+  }
+
+  tz.TZDateTime _nextInstanceOfWeekdayTime(int targetWeekday, int hour, int minute) {
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduledDate = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    while (scheduledDate.weekday != targetWeekday || scheduledDate.isBefore(now)) {
+      scheduledDate = scheduledDate.add(const Duration(days: 1));
+    }
+    return scheduledDate;
   }
 }

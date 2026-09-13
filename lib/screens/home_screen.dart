@@ -19,6 +19,7 @@ import '../services/notification_service.dart';
 import 'habit_detail_screen.dart';
 import 'habit_history_screen.dart';
 import 'calendar_stats_screen.dart';
+import '../widgets/stories/weekly_insights_button.dart';
 
 const Color kTaskColor = Color(0xFF60A5FA);
 
@@ -803,6 +804,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             actions: [
+              const WeeklyInsightsButton(isCompact: true),
               if (_isToday) IconButton(icon: const Icon(Icons.bolt), tooltip: 'Actividad extra', onPressed: _addExtraActivity),
             ],
           ),
@@ -842,6 +844,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                       children: [
+                        if (_isToday && DateTime.now().weekday == DateTime.sunday)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: WeeklyInsightsButton(isCompact: false),
+                          ),
                         if (habits.isEmpty && (_extraActivities.isEmpty || !_isToday))
                           Padding(
                             padding: const EdgeInsets.only(top: 70),

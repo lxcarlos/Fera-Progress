@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart' as sqflite;
 import '../database/db_helper.dart';
 import '../models/habit.dart';
 import '../models/weekly_insights_data.dart';
@@ -10,6 +9,14 @@ DateTime weekStartFor(DateTime d) {
   final date = dateOnly(d);
   final diff = (date.weekday - 1); // Lunes como inicio de semana
   return date.subtract(Duration(days: diff));
+}
+
+int _firstIntValue(List<Map<String, dynamic>> rows) {
+  if (rows.isNotEmpty && rows.first.isNotEmpty) {
+    final val = rows.first.values.first;
+    if (val is num) return val.toInt();
+  }
+  return 0;
 }
 
 class WeeklyInsightsService {
@@ -116,25 +123,25 @@ class WeeklyInsightsService {
     final sixMonthsAgo = startOfWeek.subtract(const Duration(days: 180)).toIso8601String().split('T')[0];
     final yearAgo = startOfWeek.subtract(const Duration(days: 365)).toIso8601String().split('T')[0];
 
-    final monthCount = sqflite.firstIntValue(await db.rawQuery(
+    final monthCount = _firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [monthAgo],
-    )) ?? 0;
+    ));
 
-    final threeMonthsCount = sqflite.firstIntValue(await db.rawQuery(
+    final threeMonthsCount = _firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [threeMonthsAgo],
-    )) ?? 0;
+    ));
 
-    final sixMonthsCount = sqflite.firstIntValue(await db.rawQuery(
+    final sixMonthsCount = _firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [sixMonthsAgo],
-    )) ?? 0;
+    ));
 
-    final yearCount = sqflite.firstIntValue(await db.rawQuery(
+    final yearCount = _firstIntValue(await db.rawQuery(
       'SELECT COUNT(*) FROM habit_records WHERE date >= ? AND completed = 1',
       [yearAgo],
-    )) ?? 0;
+    ));
 
     final List<MacroGrowthItem> macroGrowth = [
       MacroGrowthItem(periodLabel: 'vs Mes pasado', growthPct: changePct.clamp(-100, 300), completions: monthCount),

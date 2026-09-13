@@ -23,10 +23,8 @@ class DayPercentRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final clamped = percent.clamp(0.0, 1.0);
-    final themeProvider = context.watch<ThemeProvider>();
-
     return DynamicAccentBuilder(
-      controller: themeProvider.accentController,
+      controller: context.read<ThemeProvider>().accentController,
       builder: (context, accent, glow) {
         return GestureDetector(
           onTap: onTap,

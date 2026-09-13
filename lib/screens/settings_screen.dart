@@ -47,9 +47,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Configuración')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          children: [
           const Text('Apariencia', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 12),
           SegmentedButton<ThemeMode>(
@@ -182,6 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }).toList(),
             ),
         ],
+        ),
       ),
     );
   }
@@ -324,9 +326,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return DynamicAccentBuilder(
       controller: themeProvider.accentController,
       builder: (context, accent, glow) {
+        final hasGlow = glow > 2.0;
+        // Leemos visualStyle una sola vez (no watch) para las etiquetas de texto
         final style = themeProvider.visualStyle;
-        final isTron = style == AppVisualStyle.tron;
-        final hasGlow = isTron || (glow > 2.0);
+        final isTron = hasGlow && style == AppVisualStyle.tron;
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),

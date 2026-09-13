@@ -3,8 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/dynamic_accent.dart';
-import 'home_screen.dart';
+import 'calendar_screen.dart';
 
+
+
+import 'home_screen.dart';
 import 'stats_dashboard_screen.dart';
 import 'profile_screen.dart';
 
@@ -17,17 +20,23 @@ class MainNav extends StatefulWidget {
 
 class _MainNavState extends State<MainNav> {
   int _index = 0;
-// Removed calendar key (no longer needed)
+
+  final GlobalKey<CalendarScreenState> _calendarKey = GlobalKey();
 
   late final List<Widget> _tabs = [
     const HomeScreen(),
+    CalendarScreen(key: _calendarKey),
     const StatsDashboardScreen(),
     const ProfileScreen(),
   ];
 
   void _onSelect(int i) {
-  setState(() => _index = i);
-}
+    setState(() => _index = i);
+    if (i == 1) {
+      _calendarKey.currentState?.refresh();
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -51,8 +60,9 @@ class _MainNavState extends State<MainNav> {
         controller: context.read<ThemeProvider>().accentController,
         builder: (context, accent, glow) {
           final isDark = theme.brightness == Brightness.dark;
-          final isTron = context.watch<ThemeProvider>().visualStyle == AppVisualStyle.tron;
-          final borderGlow = isTron || (glow > 2.0);
+          // glow > 2.0 solo ocurre en modos Tron/Pulse/Wave — no necesitamos
+          // context.watch aquí, lo que evita rebuilds del provider completo.
+          final borderGlow = glow > 2.0;
 
           return Container(
             decoration: BoxDecoration(
@@ -102,59 +112,71 @@ class _MainNavState extends State<MainNav> {
                         splashColor: Colors.transparent,
                         highlightColor: Colors.transparent,
                         child: Center(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 240),
-                            curve: Curves.easeOutCubic,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: active ? 11 : 6,
-                              vertical: active ? 6 : 4,
+                          child: ConstrainedBox(
+                            // Limita el ancho de la píldora activa para no desbordar
+                            constraints: BoxConstraints(
+                              maxWidth: active ? (MediaQuery.of(context).size.width / _tabs.length) - 8 : 44,
                             ),
-                            decoration: BoxDecoration(
-                              color: active ? accent.withOpacity(isDark ? 0.18 : 0.14) : Colors.transparent,
-                              borderRadius: BorderRadius.circular(16),
-                              border: active
-                                  ? Border.all(
-                                      color: accent.withOpacity(borderGlow ? 0.55 : 0.35),
-                                      width: 1.2,
-                                    )
-                                  : null,
-                              boxShadow: active && borderGlow
-                                  ? [
-                                      BoxShadow(
-                                        color: accent.withOpacity(0.25),
-                                        blurRadius: glow * 1.2,
-                                        spreadRadius: 0.5,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                AnimatedScale(
-                                  scale: active ? 1.14 : 1.0,
-                                  duration: const Duration(milliseconds: 240),
-                                  curve: Curves.easeOutBack,
-                                  child: Icon(
-                                    active ? item.$1 : item.$2,
-                                    size: 22,
-                                    color: active ? accent : theme.colorScheme.onSurface.withOpacity(0.48),
-                                  ),
-                                ),
-                                if (active) ...[
-                                  const SizedBox(width: 8),
-                                  AnimatedDefaultTextStyle(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeOutCubic,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: active ? 8 : 6,
+                                vertical: active ? 6 : 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: active ? accent.withOpacity(isDark ? 0.18 : 0.14) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                                border: active
+                                    ? Border.all(
+                                        color: accent.withOpacity(borderGlow ? 0.55 : 0.35),
+                                        width: 1.2,
+                                      )
+                                    : null,
+                                boxShadow: active && borderGlow
+                                    ? [
+                                        BoxShadow(
+                                          color: accent.withOpacity(0.25),
+                                          blurRadius: glow * 1.2,
+                                          spreadRadius: 0.5,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AnimatedScale(
+                                    scale: active ? 1.14 : 1.0,
                                     duration: const Duration(milliseconds: 240),
-                                    style: TextStyle(
-                                      color: accent,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 12.5,
-                                      letterSpacing: 0.2,
+                                    curve: Curves.easeOutBack,
+                                    child: Icon(
+                                      active ? item.$1 : item.$2,
+                                      size: 22,
+                                      color: active ? accent : theme.colorScheme.onSurface.withOpacity(0.48),
                                     ),
-                                    child: Text(item.$3),
                                   ),
+                                  if (active) ...[
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: AnimatedDefaultTextStyle(
+                                        duration: const Duration(milliseconds: 240),
+                                        style: TextStyle(
+                                          color: accent,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                          letterSpacing: 0.1,
+                                        ),
+                                        child: Text(
+                                          item.$3,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
+                              ),
                             ),
                           ),
                         ),

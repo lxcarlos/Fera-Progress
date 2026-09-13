@@ -8,7 +8,7 @@ import '../services/stats_service.dart';
 import '../theme/dynamic_accent.dart';
 import '../theme/theme_provider.dart';
 import '../utils/app_events.dart';
-import '../widgets/charts/consistency_chart.dart';
+import '../utils/date_utils.dart';
 import '../widgets/charts/trend_spline_chart.dart';
 import '../widgets/stories/weekly_stories_viewer.dart';
 
@@ -21,7 +21,7 @@ class StatsDashboardScreen extends StatefulWidget {
 
 class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
   final StatsService _statsService = StatsService();
-  StatsTimeRange _selectedRange = StatsTimeRange.thirtyDays;
+  StatsTimeRange _selectedRange = StatsTimeRange.oneYear;
   StatsDashboardData? _data;
   bool _isLoading = true;
 
@@ -255,12 +255,15 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 16),
-                                TrendSplineChart(
-                                  series: _data!.trendSeries,
-                                  accentColor: accent,
-                                  isDark: isDark,
-                                  currentPeriodLabel: 'Período actual',
-                                  previousPeriodLabel: 'Período anterior',
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 16),
+                                  child: TrendSplineChart(
+                                    series: _data!.trendSeries,
+                                    accentColor: accent,
+                                    isDark: isDark,
+                                    currentPeriodLabel: 'Período actual',
+                                    previousPeriodLabel: 'Período anterior',
+                                  ),
                                 ),
                               ],
                             ),
@@ -270,7 +273,20 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
 
                       const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-                      // 3. Consistencia y Frecuencia Diaria
+                      // 3. Consistencia de Hábitos – Heatmap año completo estilo GitHub
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        sliver: SliverToBoxAdapter(
+                          child: _buildGlassCard(
+                            context: context,
+                            child: _buildYearHeatmapSection(context, accent, isDark),
+                          ),
+                        ),
+                      ),
+
+                      const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+                      // 4. Desglose por Categorías (siempre visible)
                       SliverPadding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         sliver: SliverToBoxAdapter(
@@ -281,10 +297,10 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
                               children: [
                                 Row(
                                   children: [
-                                    Icon(Icons.grid_view_rounded, size: 19, color: accent),
+                                    Icon(Icons.pie_chart_outline_rounded, size: 19, color: accent),
                                     const SizedBox(width: 8),
                                     Text(
-                                      'Consistencia de Hábitos',
+                                      'Distribución por Categorías',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
@@ -295,114 +311,73 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Volumen de hábitos completados por día en ${_selectedRange.label.toLowerCase()}',
+                                  'Progreso por área de vida en este período',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                                   ),
                                 ),
-                                const SizedBox(height: 14),
-                                ConsistencyChart(
-                                  series: _data!.consistencySeries,
-                                  accentColor: accent,
-                                  isDark: isDark,
-                                  timeRange: _selectedRange,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                                const SizedBox(height: 16),
+                                ..._data!.categoryBreakdown.map((catStat) {
+                                  final catDef = kCategories[catStat.category] ?? kCategories['general']!;
+                                  final catColor = catDef['color'] as Color;
+                                  final catIcon = catDef['icon'] as IconData;
+                                  final catLabel = catDef['label'] as String;
 
-                      const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-                      // 4. Desglose por Categorías
-                      if (_data!.categoryBreakdown.isNotEmpty)
-                        SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          sliver: SliverToBoxAdapter(
-                            child: _buildGlassCard(
-                              context: context,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Icon(Icons.pie_chart_outline_rounded, size: 19, color: accent),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Distribución por Categorías',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: theme.colorScheme.onSurface,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Áreas donde más has progresado en este período',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ..._data!.categoryBreakdown.map((catStat) {
-                                    final catDef = kCategories[catStat.category] ?? kCategories['general']!;
-                                    final catColor = catDef['color'] as Color;
-                                    final catIcon = catDef['icon'] as IconData;
-                                    final catLabel = catDef['label'] as String;
-
-                                    return Padding(
-                                      padding: const EdgeInsets.only(bottom: 12),
-                                      child: Column(
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Icon(catIcon, size: 15, color: catColor),
-                                              const SizedBox(width: 8),
-                                              Text(
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: Column(
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(catIcon, size: 15, color: catColor),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
                                                 catLabel,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
                                                   fontSize: 13,
                                                   fontWeight: FontWeight.w600,
                                                   color: theme.colorScheme.onSurface.withValues(alpha: 0.9),
                                                 ),
                                               ),
-                                              const Spacer(),
-                                              Text(
-                                                '${catStat.count}  (${catStat.percentage.toStringAsFixed(0)}%)',
-                                                style: TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 6),
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(4),
-                                            child: LinearProgressIndicator(
-                                              value: (catStat.percentage / 100).clamp(0.0, 1.0),
-                                              minHeight: 6,
-                                              backgroundColor: isDark
-                                                  ? Colors.white.withValues(alpha: 0.08)
-                                                  : Colors.black.withValues(alpha: 0.06),
-                                              valueColor: AlwaysStoppedAnimation<Color>(catColor),
                                             ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              catStat.count > 0
+                                                  ? '${catStat.count}  (${catStat.percentage.toStringAsFixed(0)}%)'
+                                                  : '0',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: LinearProgressIndicator(
+                                            value: (catStat.percentage / 100).clamp(0.0, 1.0),
+                                            minHeight: 6,
+                                            backgroundColor: isDark
+                                                ? Colors.white.withValues(alpha: 0.08)
+                                                : Colors.black.withValues(alpha: 0.06),
+                                            valueColor: AlwaysStoppedAnimation<Color>(catColor),
                                           ),
-                                        ],
-                                      ),
-                                    );
-                                  }),
-                                ],
-                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
                             ),
                           ),
                         ),
+                      ),
 
                       const SliverToBoxAdapter(child: SizedBox(height: 48)),
                     ],
@@ -480,7 +455,6 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
     Color accent,
     bool isDark,
   ) {
-    final theme = Theme.of(context);
 
     return Column(
       children: [
@@ -712,15 +686,20 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+            // En modo claro usamos un blanco sólido para que se vea sobre el fondo blanco
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.white.withValues(alpha: 0.85),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: isDark ? Colors.white.withValues(alpha: 0.11) : Colors.black.withValues(alpha: 0.07),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.11)
+                  : Colors.black.withValues(alpha: 0.09),
               width: 1.0,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.04),
+                color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.07),
                 blurRadius: 16,
                 offset: const Offset(0, 4),
               ),
@@ -730,5 +709,218 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
         ),
       ),
     );
+  }
+
+  // ─── Heatmap de año completo estilo GitHub con indicador de semana actual ───
+  Widget _buildYearHeatmapSection(BuildContext context, Color accent, bool isDark) {
+    final theme = Theme.of(context);
+    final now = DateTime.now();
+    final year = now.year;
+
+    // Construir mapa de countsByDate desde consistencySeries de TODO el año
+    // Primero cargamos los datos ya existentes (pueden ser de 30d, 90d, etc.)
+    // Para tener el año completo hacemos un mapa directo de los datos disponibles
+    final Map<String, int> countsByDate = {};
+    for (final p in _data!.consistencySeries) {
+      final key = '${p.date.year}-${p.date.month.toString().padLeft(2, '0')}-${p.date.day.toString().padLeft(2, '0')}';
+      countsByDate[key] = p.count;
+    }
+
+    // Calcular semana actual para resaltarla
+    final todayWeekday = now.weekday % 7; // 0=Dom, 1=Lun…6=Sáb (estilo GitHub)
+    final currentWeekStart = DateTime(now.year, now.month, now.day).subtract(Duration(days: todayWeekday));
+
+    // Construir la cuadrícula estilo GitHub (Dom→Sáb, izq→der = Ene→Dic)
+    final jan1 = DateTime(year, 1, 1);
+    final gridStart = jan1.subtract(Duration(days: jan1.weekday % 7));
+    final dec31 = DateTime(year, 12, 31);
+    final totalDays = dec31.difference(gridStart).inDays + 1;
+    final totalWeeks = (totalDays / 7).ceil();
+
+    final maxCount = countsByDate.values.isEmpty ? 0 : countsByDate.values.reduce((a, b) => a > b ? a : b);
+
+    String dateKey(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+    Color colorFor(int count) {
+      if (count == 0) return isDark ? const Color(0xFF1B1D20) : const Color(0xFFE8ECEF);
+      if (maxCount == 0) return accent.withValues(alpha: 0.3);
+      final ratio = count / maxCount;
+      if (ratio <= 0.25) return accent.withValues(alpha: 0.30);
+      if (ratio <= 0.50) return accent.withValues(alpha: 0.55);
+      if (ratio <= 0.75) return accent.withValues(alpha: 0.80);
+      return accent;
+    }
+
+    const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.grid_view_rounded, size: 19, color: accent),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Consistencia de Hábitos $year',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Heatmap del año · la semana actual está resaltada',
+          style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+        ),
+        const SizedBox(height: 14),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true,
+          physics: const BouncingScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Etiquetas de mes
+                Row(
+                  children: [
+                    const SizedBox(width: 20), // espacio de etiquetas de días
+                    ...List.generate(totalWeeks, (week) {
+                      final weekStart = gridStart.add(Duration(days: week * 7));
+                      final showLabel = weekStart.day <= 7 && weekStart.year == year;
+                      return SizedBox(
+                        width: 13,
+                        child: showLabel
+                            ? Text(
+                                monthNames[weekStart.month - 1],
+                                style: TextStyle(fontSize: 9, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                              )
+                            : null,
+                      );
+                    }),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Días de la semana
+                    Column(
+                      children: ['D', 'L', 'M', 'X', 'J', 'V', 'S'].map((d) {
+                        return SizedBox(
+                          height: 13,
+                          width: 14,
+                          child: Text(
+                            d,
+                            style: TextStyle(fontSize: 8, color: theme.colorScheme.onSurface.withValues(alpha: 0.45)),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(width: 2),
+                    // Columnas de semanas
+                    ...List.generate(totalWeeks, (week) {
+                      final weekStart = gridStart.add(Duration(days: week * 7));
+                      final isCurrentWeek = isSameWeek(weekStart, currentWeekStart);
+                      return Container(
+                        margin: const EdgeInsets.only(right: 2),
+                        // Sin decoración rígida — el efecto se aplica celda por celda
+                        child: Column(
+                          children: List.generate(7, (dow) {
+                            final day = gridStart.add(Duration(days: week * 7 + dow));
+                            if (day.year != year) {
+                              return const SizedBox(width: 11, height: 13);
+                            }
+                            final count = countsByDate[dateKey(day)] ?? 0;
+                            final isToday = isSameDate(day, now);
+
+                            // Celda base
+                            final cell = Container(
+                              width: 11,
+                              height: 11,
+                              decoration: BoxDecoration(
+                                color: colorFor(count),
+                                borderRadius: BorderRadius.circular(2.5),
+                                // Hoy: borde accent más grueso
+                                border: isToday
+                                    ? Border.all(color: accent, width: 1.5)
+                                    : null,
+                              ),
+                            );
+
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Tooltip(
+                                message: '${day.day}/${day.month}: $count completado${count == 1 ? '' : 's'}',
+                                child: isCurrentWeek && !isToday
+                                    // Semana actual (no hoy): glow sutil de acento sin rectángulo
+                                    ? DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(3),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accent.withValues(alpha: 0.45),
+                                              blurRadius: 5,
+                                              spreadRadius: 1,
+                                            ),
+                                          ],
+                                        ),
+                                        child: cell,
+                                      )
+                                    : cell,
+                              ),
+                            );
+                          }),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Leyenda
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text('Menos', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.45))),
+            const SizedBox(width: 6),
+            ...List.generate(5, (level) {
+              final colors = [
+                isDark ? const Color(0xFF1B1D20) : const Color(0xFFE8ECEF),
+                accent.withValues(alpha: 0.30),
+                accent.withValues(alpha: 0.55),
+                accent.withValues(alpha: 0.80),
+                accent,
+              ];
+              return Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                decoration: BoxDecoration(
+                  color: colors[level],
+                  borderRadius: BorderRadius.circular(2.5),
+                  border: Border.all(
+                    color: level == 0 ? (isDark ? Colors.white12 : Colors.black12) : Colors.transparent,
+                    width: 0.8,
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(width: 6),
+            Text('Más', style: TextStyle(fontSize: 10, color: theme.colorScheme.onSurface.withValues(alpha: 0.45))),
+          ],
+        ),
+      ],
+    );
+  }
+
+  bool isSameWeek(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 }

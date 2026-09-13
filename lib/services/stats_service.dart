@@ -1,4 +1,5 @@
 import 'dart:math';
+import '../constants/categories.dart';
 import '../database/db_helper.dart';
 import '../models/stats_data.dart';
 import '../utils/date_utils.dart';
@@ -161,7 +162,7 @@ class StatsService {
       trendSeries = _aggregateDataPoints(consistencySeries, 7);
     }
 
-    // 7. Desglose por categorías
+    // 7. Desglose por categorías – incluir TODAS las categorías aunque tengan 0
     final Map<String, int> categoryCounts = {};
     for (final r in currentHabitRecords) {
       final habitId = r['habitId'] as int;
@@ -170,18 +171,18 @@ class StatsService {
       categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
     }
 
+    // Asegurar que todas las categorías de kCategories aparezcan (aunque sean 0)
     final List<CategoryStat> categoryBreakdown = [];
-    if (totalCompleted > 0) {
-      categoryCounts.forEach((cat, count) {
-        final pct = (count / totalCompleted) * 100.0;
-        categoryBreakdown.add(CategoryStat(
-          category: cat,
-          count: count,
-          percentage: pct,
-        ));
-      });
-      categoryBreakdown.sort((a, b) => b.count.compareTo(a.count));
+    for (final catKey in kCategories.keys) {
+      final count = categoryCounts[catKey] ?? 0;
+      final pct = totalCompleted > 0 ? (count / totalCompleted) * 100.0 : 0.0;
+      categoryBreakdown.add(CategoryStat(
+        category: catKey,
+        count: count,
+        percentage: pct,
+      ));
     }
+    categoryBreakdown.sort((a, b) => b.count.compareTo(a.count));
 
     return StatsDashboardData(
       timeRange: range,

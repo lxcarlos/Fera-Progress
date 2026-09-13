@@ -787,7 +787,11 @@ class _HomeScreenState extends State<HomeScreen> {
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('Desarrollo personal', style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 1.1, fontSize: 17)),
+                Flexible(
+                  child: const Text('Desarrollo personal',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.w600, letterSpacing: 1.1, fontSize: 17)),
+                ),
                 const SizedBox(width: 10),
                 // Bolita de % de hábitos cumplidos hoy: antes vivía en la
                 // tarjeta de racha, ahora queda junto al título y, del otro
@@ -844,11 +848,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
                       children: [
-                        if (_isToday && DateTime.now().weekday == DateTime.sunday)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 12),
-                            child: WeeklyInsightsButton(isCompact: false),
-                          ),
                         if (habits.isEmpty && (_extraActivities.isEmpty || !_isToday))
                           Padding(
                             padding: const EdgeInsets.only(top: 70),
@@ -904,13 +903,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           floatingActionButton: DynamicAccentBuilder(
-            controller: context.watch<ThemeProvider>().accentController,
+            controller: context.read<ThemeProvider>().accentController,
             builder: (context, accent, glow) {
-              final isTron = context.watch<ThemeProvider>().visualStyle == AppVisualStyle.tron;
+              // glow > 2.0 en modos animados — no hace falta context.watch
+              final showGlow = glow > 2.0;
               return Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  boxShadow: (isTron || glow > 2.0)
+                  boxShadow: showGlow
                       ? [
                           BoxShadow(
                             color: accent.withOpacity(0.4),

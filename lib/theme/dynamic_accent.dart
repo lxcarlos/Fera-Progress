@@ -67,6 +67,9 @@ class DynamicAccentController {
 
   Ticker? _ticker;
 
+  // Throttle: timestamp del último frame rainbow emitido (ms)
+  int _lastRainbowMs = -1;
+
   // Cache para modo monocromático
   static const Color monoDark = Color(0xFFE4E4E7);
   static const Color monoLight = Color(0xFF27272A);
@@ -113,6 +116,7 @@ class DynamicAccentController {
   void setStyle(AppVisualStyle newStyle) {
     if (_style == newStyle) return;
     _style = newStyle;
+    _lastRainbowMs = -1; // Resetea throttle para que el primer frame salga inmediato
     _syncTickerState();
     _updateImmediate();
   }
@@ -136,6 +140,14 @@ class DynamicAccentController {
 
   void _onTick(Duration elapsed) {
     if (!_style.isAnimated) return;
+
+    // Rainbow sólo necesita ~30 fps — throttle para no presionar el compositor
+    // en dispositivos 90/120 Hz sin ningún beneficio visual.
+    if (_style == AppVisualStyle.rainbow) {
+      final ms = elapsed.inMilliseconds;
+      if (ms - _lastRainbowMs < 33) return; // ~30 fps
+      _lastRainbowMs = ms;
+    }
 
     final seconds = elapsed.inMicroseconds / 1000000.0;
     final newColor = _computeAnimatedColor(seconds);
@@ -250,28 +262,37 @@ class DynamicAccentController {
 
 /// Widget ligero que escucha [DynamicAccentController.colorNotifier]
 /// sin forzar la reconstrucción de ningún widget ancestro.
+///
+/// Optimizaciones:
+///  - Escucha ambos notifiers con un único [ListenableBuilder] (no anidados)
+///  - Aísla el repintado con [RepaintBoundary] para que el motor no
+///    vuelva a pintar widgets que están fuera de esta rama.
 class DynamicAccentBuilder extends StatelessWidget {
   final DynamicAccentController controller;
   final Widget Function(BuildContext context, Color accent, double glow) builder;
+  /// Si true, envuelve el resultado en [RepaintBoundary].
+  /// Pon false sólo cuando el widget padre ya tiene su propio boundary.
+  final bool repaintBoundary;
 
   const DynamicAccentBuilder({
     super.key,
     required this.controller,
     required this.builder,
+    this.repaintBoundary = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<Color>(
-      valueListenable: controller.colorNotifier,
-      builder: (context, color, _) {
-        return ValueListenableBuilder<double>(
-          valueListenable: controller.glowNotifier,
-          builder: (context, glow, _) {
-            return builder(context, color, glow);
-          },
-        );
-      },
+    // Un único Listenable combinado → sólo UNA suscripción, sin anidamiento.
+    final combined = Listenable.merge([controller.colorNotifier, controller.glowNotifier]);
+    final child = ListenableBuilder(
+      listenable: combined,
+      builder: (context, _) => builder(
+        context,
+        controller.colorNotifier.value,
+        controller.glowNotifier.value,
+      ),
     );
+    return repaintBoundary ? RepaintBoundary(child: child) : child;
   }
 }

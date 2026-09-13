@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/habit.dart';
 import '../database/db_helper.dart';
-import '../constants/categories.dart';
+
 import '../utils/color_utils.dart';
 import '../widgets/glass_dialog.dart';
 import '../widgets/mascot_widget.dart';
-import '../widgets/year_heatmap.dart';
+
 import '../utils/app_events.dart';
+import '../constants/categories.dart';
 import 'settings_screen.dart';
 
 const List<String> _kMotivationalPhrases = [
@@ -177,7 +178,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           children: [
                             Row(
                               children: [
-                                Text(stage['label'] as String, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                                Flexible(child: Text(stage['label'] as String, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14), overflow: TextOverflow.ellipsis)),
                                 const SizedBox(width: 6),
                                 Text('· ${stage['range']}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4))),
                               ],

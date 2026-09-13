@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 /// Punto de ritmo diario (Lunes a Domingo)
 class DailyRhythmItem {
   final String dayName;

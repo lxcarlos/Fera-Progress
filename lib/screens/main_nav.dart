@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/dynamic_accent.dart';
 import 'home_screen.dart';
-import 'calendar_screen.dart';
+
+import 'stats_dashboard_screen.dart';
 import 'profile_screen.dart';
 
 class MainNav extends StatefulWidget {
@@ -16,20 +17,17 @@ class MainNav extends StatefulWidget {
 
 class _MainNavState extends State<MainNav> {
   int _index = 0;
-  final GlobalKey<CalendarScreenState> _calendarKey = GlobalKey();
+// Removed calendar key (no longer needed)
 
   late final List<Widget> _tabs = [
     const HomeScreen(),
-    CalendarScreen(key: _calendarKey),
+    const StatsDashboardScreen(),
     const ProfileScreen(),
   ];
 
   void _onSelect(int i) {
-    setState(() => _index = i);
-    if (i == 1) {
-      _calendarKey.currentState?.refresh();
-    }
-  }
+  setState(() => _index = i);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +88,7 @@ class _MainNavState extends State<MainNav> {
                     final icons = const [
                       (Icons.checklist_rounded, Icons.checklist_outlined, 'Hábitos'),
                       (Icons.calendar_month_rounded, Icons.calendar_month_outlined, 'Calendario'),
+                      (Icons.insights_rounded, Icons.insights_outlined, 'Stats'),
                       (Icons.person_rounded, Icons.person_outline_rounded, 'Perfil'),
                     ];
                     final item = icons[i];
@@ -107,7 +106,7 @@ class _MainNavState extends State<MainNav> {
                             duration: const Duration(milliseconds: 240),
                             curve: Curves.easeOutCubic,
                             padding: EdgeInsets.symmetric(
-                              horizontal: active ? 16 : 8,
+                              horizontal: active ? 11 : 6,
                               vertical: active ? 6 : 4,
                             ),
                             decoration: BoxDecoration(

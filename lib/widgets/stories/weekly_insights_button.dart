@@ -57,7 +57,7 @@ class _WeeklyInsightsButtonState extends State<WeeklyInsightsButton>
         if (widget.isCompact) {
           // Versión compacta para el AppBar
           return IconButton(
-            icon: Icon(Icons.auto_awesome, color: isSunday ? accent : theme.colorScheme.onSurface.withOpacity(0.8)),
+            icon: Icon(Icons.auto_awesome, color: isSunday ? accent : theme.colorScheme.onSurface.withValues(alpha: 0.8)),
             tooltip: 'Insights Semanales',
             onPressed: () => _openStories(context),
           );
@@ -77,7 +77,7 @@ class _WeeklyInsightsButtonState extends State<WeeklyInsightsButton>
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: accent.withOpacity(isDark ? 0.35 : 0.18),
+                      color: accent.withValues(alpha: isDark ? 0.35 : 0.18),
                       blurRadius: glowIntensity,
                       spreadRadius: isSunday ? 1 : 0,
                     ),
@@ -94,7 +94,7 @@ class _WeeklyInsightsButtonState extends State<WeeklyInsightsButton>
                         color: isDark ? const Color(0xFF141414) : Colors.white,
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
-                          color: accent.withOpacity(isSunday ? 0.85 : 0.3),
+                          color: accent.withValues(alpha: isSunday ? 0.85 : 0.3),
                           width: isSunday ? 1.5 : 1.0,
                         ),
                       ),

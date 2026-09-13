@@ -3,6 +3,113 @@ import '../../models/weekly_insights_data.dart';
 import '../../services/weekly_insights_service.dart';
 import 'story_slide_widgets.dart';
 
+// =========================================================================
+// CLASIFICACIÓN Y COLORES SEMÁNTICOS PARA FONDOS DINÁMICOS
+// =========================================================================
+
+enum WeeklyPerformanceLevel {
+  excellent,
+  regular,
+  critical,
+}
+
+WeeklyPerformanceLevel _evaluatePerformance(WeeklyInsightsPayload payload) {
+  if (payload.isRescueMode) {
+    return WeeklyPerformanceLevel.critical;
+  }
+  if (payload.totalCompletionsThisWeek >= 14 || payload.changePercentage >= 15.0) {
+    return WeeklyPerformanceLevel.excellent;
+  }
+  return WeeklyPerformanceLevel.regular;
+}
+
+class _SemanticPalette {
+  final Color auraPrimary;
+  final Color auraSecondary;
+  final Color bgBase;
+  final Color accentColor;
+  final String statusLabel;
+  final IconData statusIcon;
+
+  const _SemanticPalette({
+    required this.auraPrimary,
+    required this.auraSecondary,
+    required this.bgBase,
+    required this.accentColor,
+    required this.statusLabel,
+    required this.statusIcon,
+  });
+
+  factory _SemanticPalette.forLevel(WeeklyPerformanceLevel level, bool isDark) {
+    if (isDark) {
+      switch (level) {
+        case WeeklyPerformanceLevel.excellent:
+          return const _SemanticPalette(
+            auraPrimary: Color(0x3534D399), // Verde Menta suave
+            auraSecondary: Color(0x1510B981),
+            bgBase: Color(0xFF090C0A),
+            accentColor: Color(0xFF34D399),
+            statusLabel: 'INSIGHTS SEMANALES',
+            statusIcon: Icons.auto_awesome,
+          );
+        case WeeklyPerformanceLevel.regular:
+          return const _SemanticPalette(
+            auraPrimary: Color(0x30F59E0B), // Ámbar cálido suave
+            auraSecondary: Color(0x14D97706),
+            bgBase: Color(0xFF0D0B08),
+            accentColor: Color(0xFFFBBF24),
+            statusLabel: 'INSIGHTS SEMANALES',
+            statusIcon: Icons.bolt,
+          );
+        case WeeklyPerformanceLevel.critical:
+          return const _SemanticPalette(
+            auraPrimary: Color(0x33EF4444), // Rojo desaturado suave
+            auraSecondary: Color(0x14B91C1C),
+            bgBase: Color(0xFF0E0808),
+            accentColor: Color(0xFFF87171),
+            statusLabel: 'REINICIO SEMANAL',
+            statusIcon: Icons.favorite_rounded,
+          );
+      }
+    } else {
+      // Modo Claro
+      switch (level) {
+        case WeeklyPerformanceLevel.excellent:
+          return const _SemanticPalette(
+            auraPrimary: Color(0x2834D399), // Menta translúcido
+            auraSecondary: Color(0x12A7F3D0),
+            bgBase: Color(0xFFF4FAF6),
+            accentColor: Color(0xFF059669),
+            statusLabel: 'INSIGHTS SEMANALES',
+            statusIcon: Icons.auto_awesome,
+          );
+        case WeeklyPerformanceLevel.regular:
+          return const _SemanticPalette(
+            auraPrimary: Color(0x22F59E0B), // Ámbar translúcido
+            auraSecondary: Color(0x12FDE68A),
+            bgBase: Color(0xFFFAF8F2),
+            accentColor: Color(0xFFD97706),
+            statusLabel: 'INSIGHTS SEMANALES',
+            statusIcon: Icons.bolt,
+          );
+        case WeeklyPerformanceLevel.critical:
+          return const _SemanticPalette(
+            auraPrimary: Color(0x22EF4444), // Rojo desaturado translúcido
+            auraSecondary: Color(0x10FECACA),
+            bgBase: Color(0xFFFAF5F5),
+            accentColor: Color(0xFFDC2626),
+            statusLabel: 'REINICIO SEMANAL',
+            statusIcon: Icons.favorite_rounded,
+          );
+      }
+    }
+  }
+}
+
+// =========================================================================
+// WIDGET PRINCIPAL: VISOR DE HISTORIAS GLASSMORPHISM
+// =========================================================================
+
 class WeeklyStoriesViewer extends StatefulWidget {
   final WeeklyInsightsPayload? initialPayload;
 
@@ -96,23 +203,35 @@ class _WeeklyStoriesViewerState extends State<WeeklyStoriesViewer>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     if (_isLoading || _payload == null) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF4ADE80)),
+      return Scaffold(
+        backgroundColor: isDark ? const Color(0xFF090C0A) : const Color(0xFFF4FAF6),
+        body: const Center(
+          child: CircularProgressIndicator(color: Color(0xFF34D399)),
         ),
       );
     }
 
+    // 1. Evaluación de rendimiento semántico y selección de paleta
+    final level = _evaluatePerformance(_payload!);
+    final palette = _SemanticPalette.forLevel(level, isDark);
     final currentSlide = _payload!.slides[_currentIndex];
 
+    final textPrimary = isDark ? Colors.white : const Color(0xFF0F172A);
+    final progressActive = isDark ? Colors.white : const Color(0xFF0F172A);
+    final progressInactive = isDark
+        ? Colors.white.withValues(alpha: 0.22)
+        : Colors.black.withValues(alpha: 0.14);
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: palette.bgBase,
       body: GestureDetector(
         onVerticalDragEnd: (details) {
           if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
-            Navigator.pop(context); // Deslizar abajo para cerrar
+            Navigator.pop(context); // Swipe down para cerrar
           }
         },
         onLongPressStart: (_) => _pause(),
@@ -127,26 +246,44 @@ class _WeeklyStoriesViewerState extends State<WeeklyStoriesViewer>
         },
         child: Stack(
           children: [
-            // Fondo de gradiente ambiental oscuro
+            // 2. FONDO DINÁMICO Y SEMÁNTICO (Verde Menta / Ámbar / Rojo Desaturado)
             Positioned.fill(
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 600),
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
-                    center: Alignment.topRight,
-                    radius: 1.3,
+                    center: const Alignment(0.7, -0.6),
+                    radius: 1.4,
                     colors: [
-                      (_payload!.isRescueMode ? Colors.blueAccent : const Color(0xFF4ADE80)).withOpacity(0.16),
-                      const Color(0xFF070707),
+                      palette.auraPrimary,
+                      palette.auraSecondary,
+                      palette.bgBase,
                     ],
+                    stops: const [0.0, 0.45, 1.0],
                   ),
                 ),
               ),
             ),
 
-            // Contenido de la historia activa
+            // 3. CONTENIDO DE LA HISTORIA ACTIVA CON TRANSICIÓN TIPO DIAPOSITIVA DE VIDRIO
             SafeArea(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 260),
+                duration: const Duration(milliseconds: 320),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final slideAnimation = Tween<Offset>(
+                    begin: const Offset(0.04, 0),
+                    end: Offset.zero,
+                  ).animate(animation);
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: slideAnimation,
+                      child: child,
+                    ),
+                  );
+                },
                 child: KeyedSubtree(
                   key: ValueKey<int>(_currentIndex),
                   child: _buildSlideContent(currentSlide),
@@ -154,13 +291,14 @@ class _WeeklyStoriesViewerState extends State<WeeklyStoriesViewer>
               ),
             ),
 
-            // Barras superiores de progreso segmentadas + Cabecera
+            // 4. BARRAS SUPERIORES DE PROGRESO SEGMENTADAS + CABECERA ACCESIBLE
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Barras segmentadas
                     Row(
                       children: List.generate(_totalStories, (i) {
                         return Expanded(
@@ -168,13 +306,13 @@ class _WeeklyStoriesViewerState extends State<WeeklyStoriesViewer>
                             margin: const EdgeInsets.symmetric(horizontal: 2.5),
                             height: 3.5,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: progressInactive,
                               borderRadius: BorderRadius.circular(2),
                             ),
                             child: i < _currentIndex
                                 ? Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: progressActive,
                                       borderRadius: BorderRadius.circular(2),
                                     ),
                                   )
@@ -187,7 +325,7 @@ class _WeeklyStoriesViewerState extends State<WeeklyStoriesViewer>
                                             widthFactor: _progressController.value,
                                             child: Container(
                                               decoration: BoxDecoration(
-                                                color: Colors.white,
+                                                color: progressActive,
                                                 borderRadius: BorderRadius.circular(2),
                                               ),
                                             ),
@@ -200,31 +338,50 @@ class _WeeklyStoriesViewerState extends State<WeeklyStoriesViewer>
                       }),
                     ),
                     const SizedBox(height: 12),
+
+                    // Cabecera superior con título y botón de cierre
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
                           children: [
                             Icon(
-                              _payload!.isRescueMode ? Icons.favorite : Icons.auto_awesome,
-                              color: _payload!.isRescueMode ? Colors.blueAccent : Colors.amber,
+                              palette.statusIcon,
+                              color: palette.accentColor,
                               size: 16,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _payload!.isRescueMode ? 'REINICIO SEMANAL' : 'INSIGHTS SEMANALES',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              palette.statusLabel,
+                              style: TextStyle(
+                                color: textPrimary,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
                               ),
                             ),
                           ],
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.white, size: 22),
-                          onPressed: () => Navigator.pop(context),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.10)
+                                    : Colors.black.withValues(alpha: 0.06),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: textPrimary,
+                                size: 18,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),

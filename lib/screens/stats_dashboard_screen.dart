@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../constants/categories.dart';
 import '../models/stats_data.dart';
 import '../services/stats_service.dart';
+import '../services/haptic_service.dart';
 import '../theme/dynamic_accent.dart';
 import '../theme/theme_provider.dart';
 import '../utils/app_events.dart';
@@ -56,7 +57,7 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
 
   void _onRangeSelected(StatsTimeRange range) {
     if (_selectedRange == range) return;
-    HapticFeedback.selectionClick();
+    AppHaptics.selectionClick();
     setState(() {
       _selectedRange = range;
     });
@@ -64,7 +65,7 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
   }
 
   void _openStories(BuildContext context) {
-    HapticFeedback.lightImpact();
+    AppHaptics.lightImpact();
     Navigator.push(
       context,
       PageRouteBuilder(
@@ -255,15 +256,12 @@ class _StatsDashboardScreenState extends State<StatsDashboardScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 16),
-                                Padding(
-                                  padding: const EdgeInsets.only(right: 16),
-                                  child: TrendSplineChart(
-                                    series: _data!.trendSeries,
-                                    accentColor: accent,
-                                    isDark: isDark,
-                                    currentPeriodLabel: 'Período actual',
-                                    previousPeriodLabel: 'Período anterior',
-                                  ),
+                                TrendSplineChart(
+                                  series: _data!.trendSeries,
+                                  accentColor: accent,
+                                  isDark: isDark,
+                                  currentPeriodLabel: 'Período actual',
+                                  previousPeriodLabel: 'Período anterior',
                                 ),
                               ],
                             ),

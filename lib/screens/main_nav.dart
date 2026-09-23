@@ -3,9 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/dynamic_accent.dart';
+import '../services/haptic_service.dart';
 import 'calendar_screen.dart';
-
-
 
 import 'home_screen.dart';
 import 'stats_dashboard_screen.dart';
@@ -106,7 +105,7 @@ class _MainNavState extends State<MainNav> {
                     return Expanded(
                       child: InkWell(
                         onTap: () {
-                          HapticFeedback.selectionClick();
+                          AppHaptics.selectionClick();
                           _onSelect(i);
                         },
                         splashColor: Colors.transparent,

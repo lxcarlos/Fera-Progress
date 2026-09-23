@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../theme/theme_provider.dart';
 import '../theme/dynamic_accent.dart';
 import '../services/notification_service.dart';
+import '../services/haptic_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +15,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   int _minutesBefore = 15;
   bool _loadingNotif = true;
+  bool _hapticsEnabled = AppHaptics.isEnabled;
 
   @override
   void initState() {
@@ -182,6 +184,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               }).toList(),
             ),
+          const SizedBox(height: 28),
+          const Text('Respuesta Háptica', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            'Controla la vibración táctil al interactuar con gráficos, botones y hábitos.',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55), fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.white.withOpacity(0.04)
+                  : Colors.black.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white.withOpacity(0.08)
+                    : Colors.black.withOpacity(0.06),
+              ),
+            ),
+            child: SwitchListTile(
+              value: _hapticsEnabled,
+              onChanged: (val) async {
+                setState(() => _hapticsEnabled = val);
+                await AppHaptics.setEnabled(val);
+              },
+              title: const Text('Vibración táctil', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              subtitle: Text(
+                _hapticsEnabled ? 'Activada (pulsos y confirmaciones táctiles)' : 'Desactivada (sin vibración)',
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+              ),
+              secondary: Icon(
+                _hapticsEnabled ? Icons.vibration_rounded : Icons.smartphone_rounded,
+                color: _hapticsEnabled ? Theme.of(context).colorScheme.primary : null,
+              ),
+            ),
+          ),
         ],
         ),
       ),

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../models/stats_data.dart';
+import '../../services/haptic_service.dart';
 
 class ConsistencyChart extends StatefulWidget {
   final List<DailyDataPoint> series;
@@ -185,7 +185,7 @@ class _ConsistencyChartState extends State<ConsistencyChart> {
           return Expanded(
             child: GestureDetector(
               onTap: () {
-                HapticFeedback.selectionClick();
+                AppHaptics.selectionClick();
                 setState(() {
                   _selectedPoint = isSelected ? null : point;
                 });
@@ -337,7 +337,7 @@ class _ConsistencyChartState extends State<ConsistencyChart> {
 
                 return GestureDetector(
                   onTap: () {
-                    HapticFeedback.selectionClick();
+                    AppHaptics.selectionClick();
                     setState(() {
                       _selectedPoint = isSelected ? null : dayPoint;
                     });

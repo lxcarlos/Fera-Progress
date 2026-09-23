@@ -1,8 +1,7 @@
-import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../models/stats_data.dart';
+import '../../services/haptic_service.dart';
 
 class TrendSplineChart extends StatefulWidget {
   final List<DailyDataPoint> series;
@@ -73,7 +72,7 @@ class _TrendSplineChartState extends State<TrendSplineChart> with SingleTickerPr
     }
 
     if (newIndex != _selectedIndex) {
-      HapticFeedback.selectionClick();
+      AppHaptics.selectionClick();
       setState(() {
         _selectedIndex = newIndex;
       });
@@ -107,65 +106,74 @@ class _TrendSplineChartState extends State<TrendSplineChart> with SingleTickerPr
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Leyenda superior y detalle interactivo
+        // Leyenda superior y detalle interactivo (responsive para evitar desbordes)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: Row(
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 6,
             children: [
-              // Leyenda Período Actual
+              // Leyendas de Períodos
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 12,
-                    height: 3.5,
-                    decoration: BoxDecoration(
-                      color: widget.accentColor,
-                      borderRadius: BorderRadius.circular(2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: widget.accentColor.withValues(alpha: 0.4),
-                          blurRadius: 4,
+                  // Leyenda Período Actual
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 3.5,
+                        decoration: BoxDecoration(
+                          color: widget.accentColor,
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: widget.accentColor.withValues(alpha: 0.4),
+                              blurRadius: 4,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        widget.currentPeriodLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.currentPeriodLabel,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
-                    ),
+                  const SizedBox(width: 12),
+                  // Leyenda Período Anterior
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white38 : Colors.black38,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        widget.previousPeriodLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(width: 16),
-              // Leyenda Período Anterior
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 12,
-                    height: 2,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.white38 : Colors.black38,
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.previousPeriodLabel,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w500,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
               // Indicador de arrastre
               if (_selectedIndex == null)
                 Text(

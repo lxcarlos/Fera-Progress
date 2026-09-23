@@ -45,7 +45,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _maxStreak = 0;
   int _totalCompletions = 0;
   bool _mascotJump = false;
-  Map<String, int> _completionCounts = {};
 
   @override
   void initState() {
@@ -73,7 +72,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _dbHelper.getTotalCompletions(),
       _dbHelper.getExtraActivitiesTotalPoints(),
       _dbHelper.getInactivityPenalty(),
-      _dbHelper.getCompletionCountsByYear(DateTime.now().year),
     ]);
 
     final prefs = results[0] as SharedPreferences;
@@ -83,7 +81,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final totalCompletions = results[4] as int;
     final extraTotal = results[5] as int;
     final penalty = results[6] as int;
-    final counts = results[7] as Map<String, int>;
 
     final rawTotal = habits.where((h) => !h.isTask).fold<int>(0, (sum, h) => sum + h.points) + extraTotal;
     final finalTotal = (rawTotal - penalty) < 0 ? 0 : rawTotal - penalty;
@@ -95,7 +92,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _categoryPoints = categoryPoints;
       _maxStreak = maxStreak;
       _totalCompletions = totalCompletions;
-      _completionCounts = counts;
     });
 
     if (_totalPoints > _prevPoints) {

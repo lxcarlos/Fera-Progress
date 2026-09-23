@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../database/db_helper.dart';
-import '../models/habit.dart';
 import '../models/weekly_insights_data.dart';
 import '../utils/date_utils.dart';
 

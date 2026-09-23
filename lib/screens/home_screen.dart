@@ -16,6 +16,7 @@ import '../widgets/celebration_overlay.dart';
 import '../widgets/day_percent_ring.dart';
 import '../utils/app_events.dart';
 import '../services/notification_service.dart';
+import '../services/haptic_service.dart';
 import 'habit_detail_screen.dart';
 import 'habit_history_screen.dart';
 import 'calendar_stats_screen.dart';
@@ -493,6 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleHabitCompletion(Habit habit) async {
     if (habit.isPaused || habit.id == null) return;
+    AppHaptics.lightImpact();
     final record = _dateRecords[habit.id];
     final isCompleted = record != null && record['completed'] == 1;
     await _dbHelper.setHabitCompletionWithEffects(habit.id!, _selectedDate, !isCompleted);
@@ -500,6 +502,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showHabitOrTaskPreview(Habit habit) {
+    AppHaptics.selectionClick();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final itemColor = resolveColor(context, color: habit.color, category: habit.category);

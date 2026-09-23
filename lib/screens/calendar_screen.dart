@@ -65,11 +65,7 @@ class CalendarScreenState extends State<CalendarScreen> {
     return '${start.day} ${_monthName(start.month)} - ${end.day} ${_monthName(end.month)}';
   }
 
-  static const List<String> _months = [
-    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
-  ];
-  String _monthName(int m) => _months[m - 1];
+  String _monthName(int m) => kSpanishMonths[m - 1];
 
   @override
   Widget build(BuildContext context) {
